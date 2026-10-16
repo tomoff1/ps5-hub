@@ -1,0 +1,4 @@
+# id	titre	version	type	url	sha256	description
+ui-lab-release	Homebrew UI Lab — archive officielle	01.000.010	homebrew	https://github.com/blackbearreloaded/ps5-homebrew-ui/releases/download/01.000.010/PPSA99050.zip	420a3fb50ad6451c0d63f5e9a5b6ca3e8579a9e29b63f2eb187e740ce853cdaf	31 Mo · GPL-3.0 · Compatibilité 13.60 non vérifiée.
+ui-lab	Homebrew UI Lab	01.000.010	link	https://github.com/blackbearreloaded/ps5-homebrew-ui		Bibliothèque graphique libre et démonstration native PS5.
+native-base	PS5 Native App Boilerplate	00.000.000	link	https://github.com/blackbearreloaded/ps5-native-app-boilerplate		Créer et compiler des applications homebrew natives.

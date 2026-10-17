@@ -89,4 +89,32 @@ TEST_F(HubService, CorruptImportPreservesLastLoadedCatalog)
     ASSERT_TRUE(hui::save::read_file(root + "/data/personal.tsv", &text));
     EXPECT_EQ(text, "broken");
 }
+TEST_F(HubService, LoadsBulkLibrary)
+{
+    auto game = entry();
+    ASSERT_TRUE(
+        hui::save::write_atomic(root + "/assets/library.tsv", hub::serialize({game})).empty());
+    hub::Service service(root + "/data", root + "/assets");
+    ASSERT_TRUE(service.load());
+    wait(service);
+    ASSERT_EQ(service.snapshot().entries.size(), 1u);
+    EXPECT_EQ(service.snapshot().entries[0].id, game.id);
+}
+TEST_F(HubService, ArtworkRejectsTruncation)
+{
+    const auto path = root + "/bad.hubart";
+    ASSERT_TRUE(hui::save::write_atomic(path, "HUBA").empty());
+    EXPECT_FALSE(hub::read_artwork(path));
+    std::string data = "HUBA";
+    data.append(8, '\0');
+    data[4] = 1;
+    data[8] = 1;
+    ASSERT_TRUE(hui::save::write_atomic(path, data).empty());
+    EXPECT_FALSE(hub::read_artwork(path));
+    data.append(4, '\xff');
+    ASSERT_TRUE(hui::save::write_atomic(path, data).empty());
+    auto art = hub::read_artwork(path);
+    ASSERT_TRUE(art);
+    EXPECT_EQ(art->pixels.size(), 4u);
+}
 } // namespace

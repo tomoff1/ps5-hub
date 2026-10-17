@@ -1,0 +1,2 @@
+# Collez ici vos liens directs HTTPS, un par ligne.
+# Les lignes commençant par # sont ignorées.

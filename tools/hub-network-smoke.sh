@@ -6,6 +6,6 @@ set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 mkdir -p build
 "${HOST_CXX:-clang++}" -std=c++20 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -pthread \
-    -Isrc host/network_smoke.cpp src/hub/service.cpp src/hub/catalog.cpp src/core/save_file.cpp \
+    -Isrc host/network_smoke.cpp src/hub/service.cpp src/hub/catalog.cpp src/hub/artwork.cpp src/core/save_file.cpp \
     -lcurl -lcrypto -o build/network_smoke
 build/network_smoke

@@ -36,6 +36,7 @@
 #include <cstdlib>
 #include <string>
 #include <vector>
+#include <unistd.h>
 
 namespace
 {
@@ -254,6 +255,8 @@ int main(int argc, char **argv)
     hui::save::ensure_directory(data_root);
     std::remove((data_root + "/settings.bin").c_str());
     hui::app::Shell shell(fonts, catalog, data_root, renderer.glass_texture());
+    shell.set_image_io([&](int w,int h,const std::uint8_t* pixels){return renderer.batch().create_texture(w,h,pixels);},
+                       [](std::uint32_t texture){glDeleteTextures(1,&texture);});
     shell.set_version("host");
 
     constexpr float kDt = 1.0f / 60.0f;
@@ -266,6 +269,12 @@ int main(int argc, char **argv)
     bool ok = true;
     const auto render = [&](const std::string &name)
     {
+        // Virtual tour time can outrun real disk I/O, especially on Windows mounts.
+        // Give the worker real time, polling with idle input before the still capture.
+        if(std::getenv("HUB_WAIT_IO")) {
+            hui::InputFrame idle;idle.connected=true;
+            for(int i=0;i<120;++i){usleep(10000);shell.update(idle,kDt);}
+        }
         shell.compose(renderer);
         glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
         glClearColor(0, 0, 0, 1);
@@ -379,6 +388,7 @@ int main(int argc, char **argv)
     long frames = 0;
     while (!tour.finished() && frames < 60 * 60 * 60)
     {
+        if(std::getenv("HUB_WAIT_IO"))usleep(2000);
         const hui::InputFrame input = tour.step(kDt);
         // Nothing is presented here, so the numbers a console would measure
         // are stood in for: 60 Hz with a little jitter and a rare long frame.

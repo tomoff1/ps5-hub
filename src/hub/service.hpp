@@ -3,13 +3,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 #include "hub/catalog.hpp"
+#include "hub/artwork.hpp"
+#include <map>
 #include <atomic>
 #include <mutex>
 #include <pthread.h>
 
 namespace hub
 {
-inline constexpr char version[] = "00.001.000";
+inline constexpr char version[] = "00.002.000";
 struct Snapshot
 {
     std::vector<Entry> entries;
@@ -17,6 +19,8 @@ struct Snapshot
     std::string message = "Chargement du catalogue…";
     bool busy = false;
     unsigned revision = 0;
+    unsigned artwork_revision = 0;
+    std::map<std::string, std::shared_ptr<const Artwork>> covers;
 };
 class Service
 {
@@ -31,6 +35,7 @@ class Service
     bool add(Entry entry);
     bool download(Entry entry);
     bool check_update();
+    bool request_covers(std::vector<std::string> ids);
     void cancel();
     std::uint64_t bytes() const
     {
@@ -51,7 +56,8 @@ class Service
         load,
         add,
         download,
-        update
+        update,
+        covers
     };
     bool start(Job job, Entry entry = {});
     static void *run(void *self);
@@ -66,6 +72,7 @@ class Service
     bool joinable_ = false;
     Job job_ = Job::load;
     Entry entry_;
+    std::vector<std::string> cover_ids_;
     std::atomic<bool> cancel_{false};
     std::atomic<std::uint64_t> received_{0};
 };

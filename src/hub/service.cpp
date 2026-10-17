@@ -85,6 +85,21 @@ bool Service::check_update()
 {
     return start(Job::update);
 }
+bool Service::request_covers(std::vector<std::string> ids)
+{
+    if (ids.size() > 12 || snapshot().busy)
+        return false;
+    for (const auto &id : ids)
+    {
+        if (id.empty() || id.size() > 64)
+            return false;
+        for (char c : id)
+            if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-'))
+                return false;
+    }
+    cover_ids_ = std::move(ids);
+    return start(Job::covers);
+}
 bool Service::start(Job job, Entry entry)
 {
     {
@@ -104,7 +119,8 @@ bool Service::start(Job job, Entry entry)
     {
         std::lock_guard lock(mutex_);
         state_.busy = true;
-        state_.message = "Opération en cours…";
+        if (job != Job::covers)
+            state_.message = "Opération en cours…";
         ++state_.revision;
     }
     if (pthread_create(&thread_, nullptr, run, this) != 0)
@@ -234,6 +250,25 @@ void Service::execute()
         finish("Stockage personnel inaccessible");
         return;
     }
+    if (job_ == Job::covers)
+    {
+        std::map<std::string, std::shared_ptr<const Artwork>> covers;
+        cover_ids_.push_back("hub-feature");
+        cover_ids_.push_back("hub-homebrew");
+        cover_ids_.push_back("hub-files");
+        for (const auto &id : cover_ids_)
+        {
+            auto art = read_artwork(assets_ + "/covers/" + id + ".hubart");
+            if (art)
+                covers.emplace(id, std::move(art));
+        }
+        std::lock_guard lock(mutex_);
+        state_.covers = std::move(covers);
+        state_.busy = false;
+        ++state_.artwork_revision;
+        ++state_.revision;
+        return;
+    }
     if (job_ == Job::load)
     {
         std::string text, error;
@@ -244,18 +279,53 @@ void Service::execute()
             finish("Catalogue fourni illisible : " + error);
             return;
         }
+        struct stat library_facts{};
+        if (stat((assets_ + "/library.tsv").c_str(), &library_facts) == 0)
+        {
+            std::vector<Entry> library;
+            if (!save::read_file(assets_ + "/library.tsv", &text, 4 * 1024 * 1024) ||
+                !parse_catalog(text, library, error))
+            {
+                finish("Bibliothèque PC illisible : " + error);
+                return;
+            }
+            for (auto &entry : library)
+            {
+                bool replaced = false;
+                for (auto &existing : all)
+                    if (existing.id == entry.id)
+                    {
+                        existing = entry;
+                        replaced = true;
+                        break;
+                    }
+                if (!replaced)
+                    all.push_back(std::move(entry));
+            }
+        }
         struct stat facts{};
         if (stat((root_ + "/personal.tsv").c_str(), &facts) == 0)
         {
             std::vector<Entry> personal;
-            if (!save::read_file(root_ + "/personal.tsv", &text, 1024 * 1024) ||
+            if (!save::read_file(root_ + "/personal.tsv", &text, 4 * 1024 * 1024) ||
                 !parse_catalog(text, personal, error))
             {
                 finish("Catalogue personnel illisible : " + error);
                 return;
             }
             for (auto &e : personal)
-                all.push_back(std::move(e));
+            {
+                bool replaced = false;
+                for (auto &existing : all)
+                    if (existing.id == e.id)
+                    {
+                        existing = e;
+                        replaced = true;
+                        break;
+                    }
+                if (!replaced)
+                    all.push_back(std::move(e));
+            }
         }
         auto files = save::list_files(root_ + "/downloads");
         {
@@ -263,7 +333,7 @@ void Service::execute()
             state_.entries = std::move(all);
             state_.files = std::move(files);
         }
-        finish("Catalogue chargé. Firmware 13.60 : non testé.");
+        finish("Bibliothèque chargée. Croix : ouvrir · Triangle : ajouter · Carré : actualiser.");
     }
     else if (job_ == Job::add)
     {

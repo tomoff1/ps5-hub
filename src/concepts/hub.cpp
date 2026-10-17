@@ -4,25 +4,29 @@
 #include "concepts/concepts.hpp"
 #include "hub/service.hpp"
 #include "ui/components/list.hpp"
+#include "ui/components/grid.hpp"
 #include "ui/components/dialog.hpp"
 #include "ui/components/keyboard.hpp"
 #include "ui/glyphs.hpp"
 #include <ctime>
+#include <cstdlib>
 
 namespace hui::concepts
 {
 namespace
 {
 using gfx::Color;
-constexpr const char *sections[] = {"Accueil", "Homebrew", "Applications", "Fichiers",
-                                    "Paramètres"};
+constexpr const char *sections[] = {"Accueil",      "Jeux",     "Homebrew",
+                                    "Applications", "Fichiers", "Paramètres"};
 constexpr const char *subtitles[] = {"Votre espace homebrew, sur grand écran.",
+                                     "Vos jeux et vos jaquettes, importés depuis le bot PC.",
                                      "Découvrez des projets libres et ajoutez vos archives.",
-                                     "Vos liens personnels et vos paquets PKG.",
+                                     "Vos archives d’applications et vos outils.",
                                      "Les fichiers réellement présents dans votre stockage.",
                                      "Une interface à votre rythme."};
-constexpr const char *techniques[] = {
-    "Rendu OpenGL natif", "Téléchargements HTTPS sur un travailleur", "Firmware 13.60 non testé"};
+constexpr const char *techniques[] = {"Rendu OpenGL natif",
+                                      "Téléchargements HTTPS sur un travailleur",
+                                      "Démarrage signalé sur 13.60, validation partielle"};
 #ifdef HUB_PS5
 constexpr const char *data_root = "/download0/hub";
 constexpr const char *assets_root = "/app0/assets";
@@ -30,6 +34,14 @@ constexpr const char *assets_root = "/app0/assets";
 constexpr const char *data_root = "build/preview-data";
 constexpr const char *assets_root = "assets";
 #endif
+const char *asset_path()
+{
+#ifndef HUB_PS5
+    if (const auto *path = std::getenv("HUB_ASSETS"))
+        return path;
+#endif
+    return assets_root;
+}
 ui::ListItem row(std::string title, std::string subtitle = {}, std::string badge = {})
 {
     ui::ListItem r;
@@ -42,7 +54,7 @@ ui::ListItem row(std::string title, std::string subtitle = {}, std::string badge
 class Hub final : public app::Concept
 {
   public:
-    explicit Hub(app::Context &c) : context_(c), service_(data_root, assets_root)
+    explicit Hub(app::Context &c) : context_(c), service_(data_root, asset_path())
     {
         theme_ = ui::themes()[0];
         theme_.surface = Color::rgb(0x151e30);
@@ -53,6 +65,10 @@ class Hub final : public app::Concept
         theme_.text_muted = Color::rgb(0xa6b7ce);
         theme_.focus = Color::rgb(0x80edd4);
         theme_.style = ui::SurfaceStyle::soft;
+        grid_.style.theme = theme_;
+        grid_.style.card.plate = true;
+        grid_.style.card.glow = true;
+        grid_.set_bounds({504, 432, 1320, 420});
         nav_.style.theme = items_.style.theme = dialog_.style.theme = keys_.style.theme = theme_;
         nav_.set_bounds({96, 270, 340, 590});
         nav_.style.row_height = 82;
@@ -90,6 +106,10 @@ class Hub final : public app::Concept
         refresh();
         service_.load();
     }
+    ~Hub() override
+    {
+        release_images();
+    }
     const app::ConceptInfo &info() const override
     {
         static const app::ConceptInfo info{"hub",
@@ -106,9 +126,11 @@ class Hub final : public app::Concept
         if (!context_.settings.reduced_motion)
             clock_ += dt;
         nav_.style.reduced_motion = items_.style.reduced_motion = dialog_.style.reduced_motion =
-            keys_.style.reduced_motion = context_.settings.reduced_motion;
+            keys_.style.reduced_motion = grid_.style.reduced_motion =
+                context_.settings.reduced_motion;
         if (service_.poll(snapshot_))
         {
+            upload_images();
             refresh();
         }
         if (dialog_.is_open())
@@ -136,10 +158,13 @@ class Hub final : public app::Concept
             if (snapshot_.busy)
                 service_.cancel();
             else
+            {
+                cover_key_.clear();
                 service_.load();
+            }
         }
-        else if (input.is_pressed(Action::north) && (section_ == 1 || section_ == 2) &&
-                 !snapshot_.busy)
+        else if (input.is_pressed(Action::north) &&
+                 (section_ == 1 || section_ == 2 || section_ == 3) && !snapshot_.busy)
         {
             draft_ = {};
             edit_step_ = 0;
@@ -148,7 +173,9 @@ class Hub final : public app::Concept
             keys_.enter();
             feedback.play(audio::Cue::select);
         }
-        else if (input.is_pressed(Action::back) || input.nav == Direction::left)
+        else if (input.is_pressed(Action::back) ||
+                 (input.nav == Direction::left &&
+                  (!is_grid() || sidebar_ || grid_.focus() % grid_.columns() == 0)))
         {
             sidebar_ = true;
             feedback.play(audio::Cue::back);
@@ -167,10 +194,14 @@ class Hub final : public app::Concept
                 feedback.play(audio::Cue::select);
             }
         }
-        else if (items_.handle(input, feedback) == ui::Event::activated)
+        else if ((is_grid() ? grid_.handle(input, feedback) : items_.handle(input, feedback)) ==
+                 ui::Event::activated)
             activate(feedback);
         nav_.set_active(sidebar_ && edit_step_ < 0 && !dialog_.is_open());
         items_.set_active(!sidebar_ && edit_step_ < 0 && !dialog_.is_open());
+        grid_.set_active(!sidebar_ && edit_step_ < 0 && !dialog_.is_open());
+        request_cover_page();
+        grid_.update(dt);
         nav_.update(dt);
         items_.update(dt);
         dialog_.update(dt);
@@ -189,7 +220,7 @@ class Hub final : public app::Concept
         list.rounded_rect({96, 76, 60, 60}, 18, theme_.primary);
         ui::text(list, fonts.semibold, "H", 126, 119, 40, theme_.on_primary, gfx::Align::center);
         ui::text(list, fonts.semibold, "PS5 Hub", 176, 119, 38, theme_.text);
-        ui::text(list, fonts.regular, "ÉDITION NATIVE  /  0.1 ALPHA", 1824, 113, 20,
+        ui::text(list, fonts.regular, "BIBLIOTHÈQUE  /  0.2 ALPHA", 1824, 113, 20,
                  theme_.text_muted, gfx::Align::right);
         list.rounded_rect({472, 230, 1352, 170}, 24, Color::rgb(0x172c3f, 0.85f));
         ui::text(list, fonts.display, sections[section_], 504, 301, 54, theme_.text);
@@ -210,15 +241,19 @@ class Hub final : public app::Concept
         }
         else
         {
-            items_.draw(canvas);
+            if (is_grid())
+                grid_.draw(canvas);
+            else
+                items_.draw(canvas);
             const auto message = fonts.regular.font->fit(snapshot_.message, 23, 1280);
             ui::text(list, fonts.regular, message, 504, 900, 23, theme_.primary);
-            if (snapshot_.busy)
+            if (snapshot_.busy && service_.bytes() > 0)
                 ui::text(list, fonts.mono, std::to_string(service_.bytes() / 1024) + " Kio reçus",
                          504, 940, 22, theme_.text_muted);
         }
         ui::text(list, fonts.regular, "13.60", 110, 902, 26, theme_.text);
-        ui::text(list, fonts.regular, "Non testé sur console", 110, 940, 22, Color::rgb(0xf4c787));
+        ui::text(list, fonts.regular, "Démarrage signalé · 13.60", 110, 940, 22,
+                 Color::rgb(0xf4c787));
         const ui::Hint hints[] = {
             {ui::Button::cross, edit_step_ >= 0 ? "Saisir" : "Ouvrir"},
             {ui::Button::circle, "Retour"},
@@ -227,7 +262,7 @@ class Hub final : public app::Concept
                                  : snapshot_.busy ? "Annuler"
                                                   : "Actualiser"}};
         ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), hints,
-                       (edit_step_ >= 0 || section_ == 1 || section_ == 2) ? 4 : 2, 1824, true);
+                       (edit_step_ >= 0 || section_ == 2 || section_ == 3) ? 4 : 2, 1824, true);
         frame.glass = dialog_.visible();
         ui::Canvas overlay{frame.overlay, fonts, frame.glass_texture, clock_};
         dialog_.draw(overlay);
@@ -237,6 +272,12 @@ class Hub final : public app::Concept
         static const app::TourStep steps[] = {
             {1.0f, 0, Direction::none, "accueil"},
             {0.4f, 0, Direction::down, nullptr},
+            {0.8f, 0, Direction::none, "jeux"},
+            {0.2f, action_bit(Action::confirm), Direction::none, nullptr},
+            {0.2f, 0, Direction::down, nullptr},
+            {0.2f, 0, Direction::down, nullptr},
+            {0.8f, action_bit(Action::back), Direction::none, "jeux-page"},
+            {0.2f, 0, Direction::down, nullptr},
             {0.8f, 0, Direction::none, "homebrew"},
             {0.2f, action_bit(Action::confirm), Direction::none, nullptr},
             {0.2f, action_bit(Action::confirm), Direction::none, nullptr},
@@ -263,66 +304,155 @@ class Hub final : public app::Concept
                       0},
                      feedback);
     }
+    bool is_grid() const
+    {
+        return section_ <= 3;
+    }
+    int content_focus() const
+    {
+        return is_grid() ? grid_.focus() : items_.focus();
+    }
+    void release_images()
+    {
+        if (context_.image_release)
+            for (const auto &pair : textures_)
+                context_.image_release(pair.second);
+        textures_.clear();
+    }
+    void upload_images()
+    {
+        if (snapshot_.artwork_revision == art_revision_ || !context_.image_upload)
+            return;
+        release_images();
+        for (const auto &pair : snapshot_.covers)
+        {
+            const auto &art = *pair.second;
+            textures_[pair.first] = context_.image_upload(art.width, art.height, art.pixels.data());
+        }
+        art_revision_ = snapshot_.artwork_revision;
+    }
+    ui::CardItem card(std::string title, std::string subtitle, std::string badge,
+                      const std::string &image) const
+    {
+        ui::CardItem item;
+        item.title = std::move(title);
+        item.subtitle = std::move(subtitle);
+        item.badge = std::move(badge);
+        auto texture = textures_.find(image);
+        if (texture != textures_.end())
+        {
+            item.texture = texture->second;
+            const auto &art = *snapshot_.covers.at(image);
+            item.image_aspect = static_cast<float>(art.width) / art.height;
+        }
+        item.top = Color::rgb(0x245767);
+        item.bottom = Color::rgb(0x17243d);
+        item.accent = theme_.primary;
+        return item;
+    }
+    void request_cover_page()
+    {
+        if (snapshot_.busy)
+            return;
+        std::vector<std::string> ids;
+        std::string key = std::to_string(section_);
+        const auto start = static_cast<std::size_t>(std::max(content_focus(), 0) / 10 * 10);
+        for (auto i = start; i < indices_.size() && i < start + 10; ++i)
+        {
+            const auto &id = snapshot_.entries[indices_[i]].id;
+            ids.push_back(id);
+            key += id;
+        }
+        if (key != cover_key_ && service_.request_covers(std::move(ids)))
+            cover_key_ = key;
+    }
     void refresh()
     {
-        items_.style.row_height = section_ == 4 ? 88.0f : 104.0f;
+        items_.style.row_height = section_ == 5 ? 88.0f : 104.0f;
         std::vector<ui::ListItem> rows;
+        std::vector<ui::CardItem> cards;
         indices_.clear();
+        grid_.style.columns = section_ == 1 ? 5 : 3;
+        grid_.style.cell_height = 400;
+        grid_.style.card.art_aspect = section_ == 1 ? 0.8f : 1.65f;
+        grid_.style.card.title_size = section_ == 1 ? 24 : 30;
+        grid_.style.card.subtitle_size = 20;
         if (section_ == 0)
         {
-            rows.push_back(
-                row("Bienvenue chez vous", "Un hub C++ / OpenGL, conçu pour la manette.", "NATIF"));
-            rows.push_back(row("Construisez votre bibliothèque",
-                               "Ajoutez vos liens dans Homebrew ou Applications.",
-                               std::to_string(snapshot_.entries.size())));
-            rows.push_back(row("Installation système",
-                               "Connecteur HyperHEN non validé : installation désactivée.",
-                               "À VALIDER"));
+            std::size_t games = 0;
+            for (const auto &entry : snapshot_.entries)
+                if (entry.kind == "pkg")
+                    ++games;
+            cards.push_back(card("Ma bibliothèque", std::to_string(games) + " jeux personnels",
+                                 "JEUX", "hub-feature"));
+            cards.push_back(card("Découvrir le homebrew", "Projets libres et applications",
+                                 "HOME BREW", "hub-homebrew"));
+            cards.push_back(
+                card("Mes fichiers", "Téléchargements et transferts PC", "LOCAL", "hub-files"));
         }
-        else if (section_ == 1 || section_ == 2)
+        else if (section_ <= 3)
         {
             for (std::size_t i = 0; i < snapshot_.entries.size(); ++i)
             {
-                const auto &e = snapshot_.entries[i];
-                if ((section_ == 1 && e.kind != "pkg") || (section_ == 2 && e.kind == "pkg"))
-                {
-                    rows.push_back(row(e.title, e.description,
-                                       e.kind == "link"  ? "PROJET"
-                                       : e.kind == "pkg" ? "PKG"
-                                                         : "ARCHIVE"));
-                    indices_.push_back(i);
-                }
+                const auto &entry = snapshot_.entries[i];
+                const bool visible = section_ == 1   ? entry.kind == "pkg"
+                                     : section_ == 2 ? entry.kind != "pkg"
+                                                     : entry.kind == "homebrew";
+                if (!visible)
+                    continue;
+                auto image = textures_.count(entry.id)
+                                 ? entry.id
+                                 : (section_ == 1 ? "hub-feature" : "hub-homebrew");
+                cards.push_back(card(entry.title,
+                                     entry.kind == "pkg" ? "PKG personnel" : entry.description,
+                                     entry.kind == "pkg"    ? "PKG"
+                                     : entry.kind == "link" ? "PROJET"
+                                                            : "ARCHIVE",
+                                     image));
+                indices_.push_back(i);
             }
-            if (rows.empty())
-                rows.push_back(row("Votre bibliothèque commence ici",
-                                   "Triangle : ajoutez un nom, une adresse et une empreinte."));
+            if (cards.empty())
+                cards.push_back(card("Importer ma bibliothèque", "Bot PC : TXT, CSV ou JSON",
+                                     "VOS LIENS", "hub-feature"));
         }
-        else if (section_ == 3)
+        else if (section_ == 4)
         {
             for (const auto &name : snapshot_.files)
                 rows.push_back(row(name, "Stockage personnel / downloads", "LOCAL"));
             if (rows.empty())
-                rows.push_back(
-                    row("Aucun téléchargement", "Les fichiers vérifiés apparaîtront ici."));
+                rows.push_back(row("Aucun téléchargement",
+                                   "Les gros PKG sont préparés et transférés par le bot PC."));
         }
         else
         {
             rows.push_back(row("Réduire les animations", "Préférence enregistrée automatiquement",
                                context_.settings.reduced_motion ? "OUI" : "NON"));
-            rows.push_back(row("Effets sonores", "Activer ou couper les sons de navigation",
+            rows.push_back(row("Effets sonores", "Sons de navigation",
                                context_.settings.ui_volume ? "OUI" : "NON"));
-            rows.push_back(row("Vérifier les mises à jour",
-                               "Recherche la version publiée de PS5 Hub", "HTTPS"));
-            rows.push_back(row("À propos et compatibilité",
-                               "Versions HyperHEN / ShadowMountPlus inconnues", "0.1 ALPHA"));
+            rows.push_back(row("Vérifier les mises à jour", "Version publiée de PS5 Hub", "HTTPS"));
+            rows.push_back(row("Bot PC et transfert PKG",
+                               "Import en masse, jaquettes, FTP et HyperDPI", "0.2 ALPHA"));
         }
-        const int focus = items_.focus();
+        const int focus = content_focus();
         items_.set_items(std::move(rows));
         items_.set_focus(focus);
+        grid_.set_items(std::move(cards));
+        grid_.set_bounds({504, 432, 1320, 420});
+        grid_.set_focus(focus);
     }
     void activate(app::Feedback &feedback)
     {
-        if (section_ == 4)
+        if (section_ == 0)
+        {
+            const int destination[] = {1, 2, 4};
+            section_ = destination[std::min(grid_.focus(), 2)];
+            nav_.set_focus(section_);
+            sidebar_ = true;
+            cover_key_.clear();
+            refresh();
+            return;
+        }
+        if (section_ == 5)
         {
             switch (items_.focus())
             {
@@ -349,9 +479,9 @@ class Hub final : public app::Concept
                 break;
             }
         }
-        else if ((section_ == 1 || section_ == 2) && !indices_.empty())
+        else if ((section_ == 1 || section_ == 2 || section_ == 3) && !indices_.empty())
         {
-            selected_ = snapshot_.entries[indices_[static_cast<std::size_t>(items_.focus())]];
+            selected_ = snapshot_.entries[indices_[static_cast<std::size_t>(content_focus())]];
             if (selected_.kind == "link")
                 notice(selected_.title,
                        selected_.url + "\nFiche de référence. Ajoutez un lien direct vers une "
@@ -373,17 +503,17 @@ class Hub final : public app::Concept
                              feedback);
             }
         }
-        else if (section_ == 3)
+        else if (section_ == 4)
             notice(
                 "Fichiers téléchargés",
                 "Consultation des téléchargements du hub. Installation système indisponible : "
                 "aucun connecteur validé pour votre configuration. Consultez le guide USB / FTP.",
                 feedback);
         else
-            notice("Première version native",
-                   "Navigation, catalogue personnel, fichiers, HTTPS et préférences. "
-                   "L’installation des PKG et le lancement d’autres titres nécessitent encore une "
-                   "intégration matérielle validée.",
+            notice("Importer vos jeux en une fois",
+                   "Sur Windows, lancez le bot PS5 Hub. Collez votre liste de liens, préparez les "
+                   "jaquettes puis synchronisez par FTP. Carré recharge la bibliothèque. Pour les "
+                   "gros PKG, le bot peut transférer vers FTP ou HyperDPI.",
                    feedback);
     }
     void accept_field(app::Feedback &feedback)
@@ -424,7 +554,7 @@ class Hub final : public app::Concept
                 return;
             }
             draft_.sha256 = edit_;
-            draft_.kind = section_ == 1 ? "homebrew" : "pkg";
+            draft_.kind = section_ == 1 ? "pkg" : "homebrew";
             draft_.version = "00.000.000";
             draft_.description = "Lien personnel — compatibilité à vérifier";
             draft_.id = "perso-" + std::to_string(static_cast<long long>(std::time(nullptr))) +
@@ -441,6 +571,10 @@ class Hub final : public app::Concept
     hub::Snapshot snapshot_;
     ui::Theme theme_;
     ui::ListView nav_, items_;
+    ui::GridView grid_;
+    std::map<std::string, std::uint32_t> textures_;
+    std::string cover_key_;
+    unsigned art_revision_ = 0;
     ui::Dialog dialog_;
     ui::Keyboard keys_;
     std::vector<std::size_t> indices_;

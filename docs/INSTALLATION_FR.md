@@ -1,10 +1,16 @@
 # Installer PS5 Hub (alpha expérimentale)
 
-Le firmware **13.60 n’a pas été testé avec PS5 Hub**. Les versions exactes de HyperHEN et ShadowMountPlus de la console cible sont inconnues. Le dossier fourni est un titre natif expérimental, pas un PKG signé Sony.
+Le démarrage de l’alpha 0.1 a été signalé par l’utilisateur sur sa PS5 déclarée en **13.60**. L’alpha 0.2 reste à tester. Les versions exactes de HyperHEN et ShadowMountPlus de la console cible sont inconnues. Le dossier fourni est un titre natif expérimental.
+
+## Passer de 0.1 à 0.2
+
+La vérification de version n’effectue pas la mise à jour. Fermez PS5 Hub, décompressez le nouveau ZIP puis remplacez les fichiers de son dossier `PPSA99841` par USB ou FTP. Conservez vos éventuels `assets/library.tsv` et jaquettes ajoutées : le nouveau ZIP n’en contient pas de personnels. Ne supprimez pas le stockage privé `/download0/hub`. Relancez ensuite l’application : le bandeau doit afficher **0.2 ALPHA**.
+
+Pour importer beaucoup de jeux et leurs jaquettes, utilisez le [bot PC](BOT_BIBLIOTHEQUE_FR.md). Il faut d’abord mettre le titre en 0.2 : synchroniser une liste sur l’ancien exécutable 0.1 n’ajoute pas les nouvelles fonctionnalités.
 
 ## USB
 
-1. Décompressez `PS5-Hub-00.001.000-experimental.zip` sur votre PC.
+1. Décompressez `PS5-Hub-00.002.000-experimental.zip` sur votre PC.
 2. Copiez le dossier `PPSA99841` dans `homebrew` à la racine de la clé USB, sur un système de fichiers pris en charge par votre chargeur. La structure attendue est `USB:/homebrew/PPSA99841/eboot.bin`, avec `sce_sys`, `sce_module` et `assets` à côté.
 3. Démarrez votre environnement homebrew habituel et la version de ShadowMountPlus que vous utilisez déjà. Attendez son analyse des dossiers.
 4. Si le titre est enregistré, ouvrez **PS5 Hub** depuis l’accueil. La présence de l’icône ne prouve pas que l’exécutable est compatible.

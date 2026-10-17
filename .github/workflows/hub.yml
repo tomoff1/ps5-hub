@@ -18,15 +18,19 @@ jobs:
       - name: Dépendances
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-18 lld-18 ninja-build make git curl wget unzip python3 python3-venv pkg-config libegl-dev libgl-dev libgl1-mesa-dri libcurl4-openssl-dev libssl-dev
+          sudo apt-get install -y clang-18 lld-18 ninja-build make git curl wget unzip python3 python3-venv python3-pil pkg-config libegl-dev libgl-dev libgl1-mesa-dri libcurl4-openssl-dev libssl-dev
       - name: Tests C++
         run: make test-unit HOST_CXX=clang++-18 HOST_CC=clang-18
       - name: Tests du transfert FTP simulé
         run: python3 -m unittest discover -s tests -p test_hub_tools.py -v
+      - name: Tests du bot de bibliothèque
+        run: python3 -m unittest discover -s tests -p test_library_bot.py -v
       - name: Rendu natif hors écran
         run: HOST_CXX=clang++-18 HOST_CC=clang-18 bash tools/host-snapshots.sh build/snapshots hub
       - name: Compilation PS5 et préparation
-        run: bash tools/hub-build.sh
+        run: |
+          bash tools/hub-build.sh
+          python3 tools/hub-bot-package.py
       - uses: actions/upload-artifact@v4
         with:
           name: PS5-Hub-experimental

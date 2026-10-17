@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <functional>
 #include <span>
 #include <vector>
 
@@ -63,6 +64,8 @@ struct Context
     // applies the change (volumes, button swap, ...) and saves it.
     Settings &settings;
     bool settings_changed = false;
+    std::function<std::uint32_t(int,int,const std::uint8_t*)> image_upload = {};
+    std::function<void(std::uint32_t)> image_release = {};
 };
 
 // One frame of a design, back to front:

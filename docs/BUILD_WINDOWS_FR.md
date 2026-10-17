@@ -35,8 +35,8 @@ dist/PPSA99841/
   sce_sys/icon0.png
   sce_module/libc.prx
   assets/...
-dist/PS5-Hub-00.001.000-experimental.zip
-dist/PS5-Hub-00.001.000-experimental.zip.sha256
+dist/PS5-Hub-00.002.000-experimental.zip
+dist/PS5-Hub-00.002.000-experimental.zip.sha256
 ```
 
 Le dossier contient aussi les modules et fichiers produits par le kit. Conservez-les tous. Un contrôle FSELF, la présence des fichiers et l’empreinte du ZIP sont vérifiés par `tools/hub-package.py`. Cela confirme le format du paquet, pas son exécution sur PS5.
@@ -62,6 +62,6 @@ Le fichier `assets/catalog.tsv` contient sept colonnes séparées par des tabula
 id  titre  version  type  url  sha256  description
 ```
 
-Types : `link` pour une fiche de projet, `homebrew` pour une archive ZIP, `pkg` pour un paquet. Les identifiants sont composés de lettres minuscules, chiffres et tirets ; les URL sont HTTPS ; le SHA-256 est en hexadécimal minuscule. Limites : 500 entrées et 1 Mio par catalogue. Une erreur de lecture ou de validation ne remplace pas le catalogue par des données partielles.
+Types : `link` pour une fiche de projet, `homebrew` pour une archive ZIP, `pkg` pour un paquet. Les identifiants sont composés de lettres minuscules, chiffres et tirets ; les URL sont HTTPS ; le SHA-256 est en hexadécimal minuscule. Le catalogue importé du bot accepte 5000 fiches et 4 Mio ; l’ajout manuel reste limité à 500 fiches. Une erreur de lecture ou de validation ne remplace pas le catalogue par des données partielles.
 
 Le catalogue personnel est enregistré sur le titre par le clavier DualSense. Il n’est jamais ajouté à GitHub automatiquement. La vérification de mise à jour lit uniquement `release-version.txt` dans le dépôt officiel PS5 Hub ; elle ne télécharge ni n’installe automatiquement une mise à jour.

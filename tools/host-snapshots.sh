@@ -49,5 +49,5 @@ grep -E 'warning' -A4 "$build/build.log" | head -40 >&2 || true
 
 output=${1:-"$root/build/snapshots"}
 mkdir -p "$output"
-EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe \
+HUB_ASSETS="${HUB_ASSETS:-$root/assets}" HUB_WAIT_IO=1 EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe \
     "$build/hui_snapshots" "$root/assets" "$output" "${@:2}"

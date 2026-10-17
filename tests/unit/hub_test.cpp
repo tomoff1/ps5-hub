@@ -48,7 +48,7 @@ TEST(HubCatalog, BoundsAndHash)
 {
     std::vector<hub::Entry> entries;
     std::string error;
-    EXPECT_FALSE(hub::parse_catalog(std::string(1024 * 1024 + 1, 'x'), entries, error));
+    EXPECT_FALSE(hub::parse_catalog(std::string(4 * 1024 * 1024 + 1, 'x'), entries, error));
     EXPECT_TRUE(hub::valid_hash(std::string(64, 'a')));
     EXPECT_FALSE(hub::valid_hash(std::string(63, 'a')));
     EXPECT_FALSE(hub::valid_hash(std::string(64, 'g')));

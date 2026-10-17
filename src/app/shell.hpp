@@ -34,6 +34,11 @@ class Shell
           std::uint32_t glass_texture);
 
     static Settings load_settings(const std::string &data_root);
+    void set_image_io(std::function<std::uint32_t(int,int,const std::uint8_t*)> upload,
+                      std::function<void(std::uint32_t)> release)
+    {
+        context_.image_upload=std::move(upload);context_.image_release=std::move(release);
+    }
 
     void update(const InputFrame &input, float dt);
     // Queues this frame's layers; the caller presents them.

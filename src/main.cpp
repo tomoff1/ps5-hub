@@ -205,6 +205,8 @@ int main()
         sys::log("[HUI] sound rejected %s", error.c_str());
 
     app::Shell shell(fonts, catalog, kDataRoot, renderer.glass_texture());
+    shell.set_image_io([&](int w,int h,const std::uint8_t* pixels){return renderer.batch().create_texture(w,h,pixels);},
+                       [](std::uint32_t texture){glDeleteTextures(1,&texture);});
     const std::string version = read_content_version("/app0/sce_sys/param.json");
     shell.set_version(version);
     sys::log("[HUI] version %s designs=%zu", version.empty() ? "unknown" : version.c_str(),

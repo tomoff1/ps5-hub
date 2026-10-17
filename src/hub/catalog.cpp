@@ -83,7 +83,7 @@ bool parse_catalog(std::string_view text, std::vector<Entry> &out, std::string &
 {
     std::vector<Entry> parsed;
     std::set<std::string> ids;
-    if (text.size() > 1024 * 1024)
+    if (text.size() > 4 * 1024 * 1024)
     {
         error = "Catalogue trop volumineux";
         return false;
@@ -113,9 +113,9 @@ bool parse_catalog(std::string_view text, std::vector<Entry> &out, std::string &
         error = validate(e);
         if (!error.empty())
             return false;
-        if (!ids.insert(e.id).second || parsed.size() >= 500)
+        if (!ids.insert(e.id).second || parsed.size() >= 5000)
         {
-            error = "Doublon ou limite de 500 entrées";
+            error = "Doublon ou limite de 5000 entrées";
             return false;
         }
         parsed.push_back(std::move(e));

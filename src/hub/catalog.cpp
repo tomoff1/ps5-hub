@@ -4,6 +4,7 @@
 #include "hub/catalog.hpp"
 #include <array>
 #include <set>
+#include <cctype>
 
 namespace hub
 {
@@ -71,13 +72,67 @@ std::string validate(const Entry &e)
     std::array<int, 3> v{};
     if (!version(e.version, v))
         return "Version attendue : 01.000.000";
-    if (e.kind != "homebrew" && e.kind != "pkg" && e.kind != "link")
+    if (e.kind != "homebrew" && e.kind != "pkg" && e.kind != "link" && e.kind != "game")
         return "Type inconnu";
     if (!valid_url(e.url))
         return "Une adresse HTTPS sans identifiants est nécessaire";
     if (!e.sha256.empty() && !valid_hash(e.sha256))
         return "SHA-256 attendu : 64 caractères hexadécimaux minuscules";
     return {};
+}
+bool is_game(const Entry &e)
+{
+    return e.kind == "pkg" || e.kind == "game";
+}
+bool is_reference(const Entry &e)
+{
+    return e.kind == "link" || (e.kind == "game" && e.sha256.empty());
+}
+bool matches(const Entry &e, std::string_view query)
+{
+    const auto fold = [](std::string s)
+    {
+        std::string result;
+        for (std::size_t i = 0; i < s.size(); ++i)
+        {
+            const auto c = static_cast<unsigned char>(s[i]);
+            if (c == 0xc3 && i + 1 < s.size())
+            {
+                const auto n = static_cast<unsigned char>(s[i + 1]);
+                char latin = 0;
+                if ((n >= 0x80 && n <= 0x85) || (n >= 0xa0 && n <= 0xa5)) latin = 'a';
+                else if (n == 0x87 || n == 0xa7) latin = 'c';
+                else if ((n >= 0x88 && n <= 0x8b) || (n >= 0xa8 && n <= 0xab)) latin = 'e';
+                else if ((n >= 0x8c && n <= 0x8f) || (n >= 0xac && n <= 0xaf)) latin = 'i';
+                else if (n == 0x91 || n == 0xb1) latin = 'n';
+                else if ((n >= 0x92 && n <= 0x96) || (n >= 0xb2 && n <= 0xb6)) latin = 'o';
+                else if ((n >= 0x99 && n <= 0x9c) || (n >= 0xb9 && n <= 0xbc)) latin = 'u';
+                else if (n == 0x9d || n == 0xbd || n == 0xbf) latin = 'y';
+                if (latin)
+                {
+                    result += latin;
+                    ++i;
+                    continue;
+                }
+            }
+            result += static_cast<char>(std::tolower(c));
+        }
+        return result;
+    };
+    const auto text = fold(e.title + " " + e.description + " " + e.id);
+    auto words = fold(std::string(query));
+    std::size_t start = 0;
+    while (start < words.size())
+    {
+        const auto end = words.find(' ', start);
+        const auto word = words.substr(start, end == words.npos ? words.size() - start : end - start);
+        if (!word.empty() && text.find(word) == text.npos)
+            return false;
+        if (end == words.npos)
+            break;
+        start = end + 1;
+    }
+    return true;
 }
 bool parse_catalog(std::string_view text, std::vector<Entry> &out, std::string &error)
 {

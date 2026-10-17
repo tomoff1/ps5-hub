@@ -21,6 +21,8 @@ def package():
     notices.mkdir(exist_ok=True)
     for name in ['LICENSE','THIRD_PARTY_NOTICES.md']:
         shutil.copy2(ROOT/name,notices/name)
+    qr_notice=(ROOT/'src/third_party/qrcodegen/qrcodegen.h').read_text(encoding='utf-8').split('*/',1)[0]+'*/\n'
+    (notices/'QR-Code-generator-LICENSE.txt').write_text(qr_notice,encoding='utf-8')
     for source,name in [(ROOT/'.deps/pacbrew/v0.40.2/sysroot/user/homebrew/share/licenses','pacbrew'),
                         (ROOT/'.deps/ps5-opengl/ps5-opengl-sdk-1.0.2/LICENSES','opengl')]:
         if not source.is_dir():raise SystemExit(f'Notices des dépendances absentes : {source}')
@@ -28,6 +30,7 @@ def package():
     shutil.copy2(ROOT/'docs/INSTALLATION_FR.md',folder/'INSTALLATION_FR.md')
     shutil.copy2(ROOT/'docs/COMPATIBILITE_13_60.md',folder/'COMPATIBILITE_13_60.md')
     shutil.copy2(ROOT/'docs/BOT_BIBLIOTHEQUE_FR.md',folder/'BOT_BIBLIOTHEQUE_FR.md')
+    shutil.copy2(ROOT/'docs/CATALOGUE_PARTAGE_FR.md',folder/'CATALOGUE_PARTAGE_FR.md')
     archive = ROOT / 'dist' / f'PS5-Hub-{meta["contentVersion"]}-experimental.zip'
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
         for path in sorted(folder.rglob('*')):

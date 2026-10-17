@@ -5,13 +5,14 @@
 #include "hub/catalog.hpp"
 #include "hub/artwork.hpp"
 #include <map>
+#include <set>
 #include <atomic>
 #include <mutex>
 #include <pthread.h>
 
 namespace hub
 {
-inline constexpr char version[] = "00.002.000";
+inline constexpr char version[] = "00.003.000";
 struct Snapshot
 {
     std::vector<Entry> entries;
@@ -35,6 +36,7 @@ class Service
     bool add(Entry entry);
     bool download(Entry entry);
     bool check_update();
+    bool sync_catalog();
     bool request_covers(std::vector<std::string> ids);
     void cancel();
     std::uint64_t bytes() const
@@ -57,6 +59,7 @@ class Service
         add,
         download,
         update,
+        sync,
         covers
     };
     bool start(Job job, Entry entry = {});
@@ -73,6 +76,7 @@ class Service
     Job job_ = Job::load;
     Entry entry_;
     std::vector<std::string> cover_ids_;
+    std::set<std::string> public_ids_;
     std::atomic<bool> cancel_{false};
     std::atomic<std::uint64_t> received_{0};
 };

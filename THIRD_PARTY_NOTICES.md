@@ -8,6 +8,52 @@ PS5 Hub incorporates the GPL-3.0-or-later UI kit by BlackBearReloaded at
 `44ae1dab529654eac795d2a7c4f5a0425102b8d7`. Original notices are retained.
 New PS5 Hub sources are GPL-3.0-or-later.
 
+### Community catalog and developer icons (0.3)
+
+The public records derive from BlackBearReloaded's
+[ps5-homebrew-catalog](https://github.com/blackbearreloaded/ps5-homebrew-catalog),
+Copyright (C) 2026 BlackBearReloaded, GPL-3.0-or-later, pinned at
+`ab6d9911ac82e56c73b8390131b93a58ce0545ed`.
+`assets/catalog-provenance.json` retains records, authors, project licenses,
+source repositories and icon URLs. The 90 `ppsa*.hubart` images are resized
+presentations of developer icons with a PS5 Hub title-ID strip. They remain
+their respective authors' artwork. The catalog GPL license does not replace
+project licenses or grant rights to proprietary game data. No referenced
+release binary or commercial game data is bundled. The three `hub-*.hubart`
+illustrations remain original PS5 Hub artwork.
+
+### QR Code generator
+
+`src/third_party/qrcodegen/qrcodegen.c` and `.h` are Project Nayuki's QR Code generator,
+MIT License, pinned at `3c6d0b3cefb4e049dc337e82237c9644399716a8`.
+Their complete copyright and permission notice are retained in source and
+included in binary packages as `licenses/QR-Code-generator-LICENSE.txt`.
+Source: https://github.com/nayuki/QR-Code-generator
+
+
+### Community catalog and developer icons (0.3)
+
+The bundled public records derive from BlackBearReloaded's
+[ps5-homebrew-catalog](https://github.com/blackbearreloaded/ps5-homebrew-catalog),
+Copyright (C) 2026 BlackBearReloaded, GPL-3.0-or-later, pinned at
+`ab6d9911ac82e56c73b8390131b93a58ce0545ed`.
+`assets/catalog-provenance.json` retains the records, authors, project licenses,
+source repositories and original icon URLs. The 90 `ppsa*.hubart` files are
+resized presentations of those developer icons, with a PS5 Hub title-ID strip.
+They remain their respective authors' artwork; no ownership of it is claimed.
+The catalogue's GPL license does not replace each referenced project's license
+or grant rights to proprietary game data. No referenced release binary or
+commercial game data is bundled. The three `hub-*.hubart` illustrations remain
+original PS5 Hub artwork.
+
+### QR Code generator
+
+`src/third_party/qrcodegen/qrcodegen.c` and `.h` are Project Nayuki's QR Code generator,
+MIT License, pinned at `3c6d0b3cefb4e049dc337e82237c9644399716a8`.
+The complete copyright and permission notice are retained in those files and
+included in binary packages as `licenses/QR-Code-generator-LICENSE.txt`.
+Source: https://github.com/nayuki/QR-Code-generator
+
 The network worker statically links PacBrew libcurl and its transitive
 dependencies (including OpenSSL, zlib, zstd and libpsl) using the pinned
 PacBrew sysroot. libcurl uses the curl licence; OpenSSL 3 uses Apache-2.0;
@@ -167,7 +213,7 @@ selected, is the owner's own track, encoded with
 (57.6 s, 192 kb/s, -28 LUFS, whole-track loop).
 `HUI_ICON=<file> tools/host-snapshots.sh` still renders a plain icon
 with the project's own renderer, for forks that want one of their own. The
-cover art inside the app is rendered at start-up from invented titles; no real
-product's name, artwork or trademark is used.
+original upstream gallery uses invented covers. PS5 Hub 0.3's actual public
+catalog uses the attributed developer icons described above.
 
 No proprietary runtime module, encryption key, or game file is included.

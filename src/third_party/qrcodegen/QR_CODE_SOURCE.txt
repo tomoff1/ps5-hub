@@ -1,0 +1,4 @@
+Project Nayuki - QR Code generator
+MIT License, copyright and full license retained in both source files.
+https://github.com/nayuki/QR-Code-generator
+Commit: 3c6d0b3cefb4e049dc337e82237c9644399716a8

@@ -35,8 +35,8 @@ dist/PPSA99841/
   sce_sys/icon0.png
   sce_module/libc.prx
   assets/...
-dist/PS5-Hub-00.002.000-experimental.zip
-dist/PS5-Hub-00.002.000-experimental.zip.sha256
+dist/PS5-Hub-00.003.000-experimental.zip
+dist/PS5-Hub-00.003.000-experimental.zip.sha256
 ```
 
 Le dossier contient aussi les modules et fichiers produits par le kit. Conservez-les tous. Un contrôle FSELF, la présence des fichiers et l’empreinte du ZIP sont vérifiés par `tools/hub-package.py`. Cela confirme le format du paquet, pas son exécution sur PS5.

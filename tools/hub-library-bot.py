@@ -84,7 +84,7 @@ def normalize(row):
     checksum=clean(row.get('sha256',''),64).lower()
     if checksum and not re.fullmatch('[a-f0-9]{64}',checksum):raise ValueError('Empreinte SHA-256 invalide.')
     kind=clean(row.get('kind') or 'pkg',16)
-    if kind not in ('pkg','homebrew','link'):raise ValueError('Type inconnu.')
+    if kind not in ('pkg','homebrew','link','game'):raise ValueError('Type inconnu.')
     version=clean(row.get('version') or '00.000.000',10)
     if not re.fullmatch(r'\d{1,3}\.\d{1,3}\.\d{1,3}',version):raise ValueError('Version invalide.')
     return {'id':game_id,'title':title,'version':version,'kind':kind,'url':url,'sha256':checksum,

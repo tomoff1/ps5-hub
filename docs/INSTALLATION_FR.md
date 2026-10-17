@@ -1,16 +1,16 @@
 # Installer PS5 Hub (alpha expérimentale)
 
-Le démarrage de l’alpha 0.1 a été signalé par l’utilisateur sur sa PS5 déclarée en **13.60**. L’alpha 0.2 reste à tester. Les versions exactes de HyperHEN et ShadowMountPlus de la console cible sont inconnues. Le dossier fourni est un titre natif expérimental.
+Le démarrage de l’alpha 0.1 a été signalé par l’utilisateur sur sa PS5 déclarée en **13.60**. L’alpha 0.3 reste à tester. Les versions exactes de HyperHEN et ShadowMountPlus de la console cible sont inconnues. Le dossier fourni est un titre natif expérimental.
 
-## Passer de 0.1 à 0.2
+## Passer de 0.1 / 0.2 à 0.3
 
-La vérification de version n’effectue pas la mise à jour. Fermez PS5 Hub, décompressez le nouveau ZIP puis remplacez les fichiers de son dossier `PPSA99841` par USB ou FTP. Conservez vos éventuels `assets/library.tsv` et jaquettes ajoutées : le nouveau ZIP n’en contient pas de personnels. Ne supprimez pas le stockage privé `/download0/hub`. Relancez ensuite l’application : le bandeau doit afficher **0.2 ALPHA**.
+La vérification de version n’effectue pas la mise à jour. Fermez PS5 Hub, décompressez le nouveau ZIP puis remplacez les fichiers de son dossier `PPSA99841` par USB ou FTP. Conservez vos éventuels `assets/library.tsv` et jaquettes ajoutées : le nouveau ZIP n’en contient pas de personnels. Ne supprimez pas le stockage privé `/download0/hub`. Relancez ensuite l’application : le bandeau doit afficher **0.3 ALPHA**.
 
-Pour importer beaucoup de jeux et leurs jaquettes, utilisez le [bot PC](BOT_BIBLIOTHEQUE_FR.md). Il faut d’abord mettre le titre en 0.2 : synchroniser une liste sur l’ancien exécutable 0.1 n’ajoute pas les nouvelles fonctionnalités.
+Pour importer beaucoup de jeux et leurs jaquettes, utilisez le [bot PC](BOT_BIBLIOTHEQUE_FR.md). Il faut d’abord mettre le titre en 0.3 : synchroniser une liste sur l’ancien exécutable 0.1 n’ajoute pas les nouvelles fonctionnalités.
 
 ## USB
 
-1. Décompressez `PS5-Hub-00.002.000-experimental.zip` sur votre PC.
+1. Décompressez `PS5-Hub-00.003.000-experimental.zip` sur votre PC.
 2. Copiez le dossier `PPSA99841` dans `homebrew` à la racine de la clé USB, sur un système de fichiers pris en charge par votre chargeur. La structure attendue est `USB:/homebrew/PPSA99841/eboot.bin`, avec `sce_sys`, `sce_module` et `assets` à côté.
 3. Démarrez votre environnement homebrew habituel et la version de ShadowMountPlus que vous utilisez déjà. Attendez son analyse des dossiers.
 4. Si le titre est enregistré, ouvrez **PS5 Hub** depuis l’accueil. La présence de l’icône ne prouve pas que l’exécutable est compatible.
@@ -35,7 +35,7 @@ Le script affiche la destination et demande de taper `OUI`. Pour un compte FTP p
 - Carré : actualiser ; pendant une opération, demander son annulation.
 - Paramètres : animations, sons, recherche de mise à jour.
 
-**Homebrew** reçoit des archives ZIP. **Applications** reçoit les liens PKG personnels, y compris vos créations ou jeux que vous êtes autorisé à utiliser. Le type vient de la rubrique d’ajout. Les liens ne sont pas consultés automatiquement.
+**Jeux** reçoit les PKG personnels ; **Homebrew** et **Applications** reçoivent des archives homebrew. Le catalogue public est actualisé par HTTPS sans remplacer vos imports. L1 recherche, R1 filtre et Options change les favoris. Les fiches proposent un QR vers le développeur. Voir [catalogue partagé](CATALOGUE_PARTAGE_FR.md).
 
 Les téléchargements sont limités à 2 Gio par fichier et à l’espace réellement accessible. Le stockage propre au titre peut être bien plus petit : cette alpha convient aux petits homebrews, pas à une bibliothèque de gros jeux. Un fichier n’apparaît avec son nom final qu’après réussite du transfert et vérification SHA-256.
 
@@ -44,6 +44,9 @@ Les téléchargements sont limités à 2 Gio par fichier et à l’espace réell
 Dans l’application, les données sont dans `/download0/hub` :
 
 - `personal.tsv` : catalogue personnel ;
+- `shared.tsv` : copie validée du catalogue public ;
+- `favorites.txt` : identifiants des favoris ;
+- `covers/` : cache des nouvelles jaquettes publiques ;
 - `downloads/` : fichiers téléchargés ;
 - `hub.log` et `hub.log.1` : résultats des opérations ;
 - `settings.bin` : préférences du kit ;

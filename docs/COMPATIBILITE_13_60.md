@@ -1,6 +1,6 @@
 # Compatibilité et protocole de test — firmware 13.60
 
-Retour utilisateur du 17 octobre 2026 : **l’alpha 0.1 apparaît sur l’accueil et démarre sur sa configuration déclarée PS5 13.60**, avec photos fournies dans le chat. Les photos personnelles ne sont pas redistribuées dans le dépôt. Ce retour ne valide pas toutes les fonctions, ni l’alpha 0.2.
+Retour utilisateur du 17 octobre 2026 : **l’alpha 0.1 apparaît sur l’accueil et démarre sur sa configuration déclarée PS5 13.60**, avec photos fournies dans le chat. Les photos personnelles ne sont pas redistribuées dans le dépôt. Ce retour ne valide pas toutes les fonctions, ni l’alpha 0.3.
 
 | Élément | État |
 |---|---|
@@ -9,7 +9,7 @@ Retour utilisateur du 17 octobre 2026 : **l’alpha 0.1 apparaît sur l’accuei
 | ShadowMountPlus | Version exacte inconnue |
 | FTP 2121 | Disponibilité déclarée ; connexion non testée |
 | Enregistrement du titre | Signalé sur l’alpha 0.1 ; icône personnalisée non confirmée |
-| Lancement et rendu OpenGL | Signalés sur l’alpha 0.1 ; alpha 0.2 à tester |
+| Lancement et rendu OpenGL | Signalés sur l’alpha 0.1 ; alpha 0.3 à tester |
 | DualSense, son, cadence et fermeture | À tester |
 | HTTPS et stockage dans le sandbox | À tester |
 | Installation de PKG depuis le hub | Non implémentée |

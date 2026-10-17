@@ -28,3 +28,5 @@ src/ui/glyphs.cpp
 src/ui/pixel_font.cpp
 src/ui/theme.cpp
 src/ui/widgets.cpp
+
+src/third_party/qrcodegen/qrcodegen.c

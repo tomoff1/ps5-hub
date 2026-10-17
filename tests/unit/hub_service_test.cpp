@@ -100,6 +100,29 @@ TEST_F(HubService, LoadsBulkLibrary)
     ASSERT_EQ(service.snapshot().entries.size(), 1u);
     EXPECT_EQ(service.snapshot().entries[0].id, game.id);
 }
+TEST_F(HubService, SharedCatalogKeepsPrivateOverrides)
+{
+    hub::Service service(root + "/data", root + "/assets");
+    ASSERT_TRUE(service.load());
+    wait(service);
+    auto shared = entry();
+    shared.title = "Version du catalogue partagé";
+    ASSERT_TRUE(hui::save::write_atomic(root + "/data/shared.tsv", hub::serialize({shared})).empty());
+    auto personal = entry();
+    personal.title = "Ma version privée";
+    ASSERT_TRUE(hui::save::write_atomic(root + "/data/personal.tsv", hub::serialize({personal})).empty());
+    ASSERT_TRUE(service.load());
+    wait(service);
+    ASSERT_EQ(service.snapshot().entries.size(), 1u);
+    EXPECT_EQ(service.snapshot().entries[0].title, "Ma version privée");
+    ASSERT_TRUE(service.sync_catalog());
+    wait(service);
+    // Le réseau est coupé par HUB_TEST : la copie et les fiches restent intactes.
+    std::string text;
+    ASSERT_TRUE(hui::save::read_file(root + "/data/shared.tsv", &text));
+    EXPECT_EQ(text, hub::serialize({shared}));
+    EXPECT_EQ(service.snapshot().entries[0].title, "Ma version privée");
+}
 TEST_F(HubService, ArtworkRejectsTruncation)
 {
     const auto path = root + "/bad.hubart";

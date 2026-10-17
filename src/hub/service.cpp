@@ -85,6 +85,10 @@ bool Service::check_update()
 {
     return start(Job::update);
 }
+bool Service::sync_catalog()
+{
+    return start(Job::sync);
+}
 bool Service::request_covers(std::vector<std::string> ids)
 {
     if (ids.size() > 12 || snapshot().busy)
@@ -201,7 +205,7 @@ std::string Service::transfer(const std::string &url, const std::string &path,
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 3600L);
     curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1024L);
     curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 30L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "PS5-Hub/0.1");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "PS5-Hub/0.3");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_chunk);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &sink);
     curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progress);
@@ -245,7 +249,8 @@ std::string Service::transfer(const std::string &url, const std::string &path,
 void Service::execute()
 {
     using namespace hui;
-    if (!save::ensure_directory(root_) || !save::ensure_directory(root_ + "/downloads"))
+    if (!save::ensure_directory(root_) || !save::ensure_directory(root_ + "/downloads") ||
+        !save::ensure_directory(root_ + "/covers"))
     {
         finish("Stockage personnel inaccessible");
         return;
@@ -258,7 +263,27 @@ void Service::execute()
         cover_ids_.push_back("hub-files");
         for (const auto &id : cover_ids_)
         {
+            if (cancelled())
+                break;
             auto art = read_artwork(assets_ + "/covers/" + id + ".hubart");
+            const auto cached = root_ + "/covers/" + id + ".hubart";
+            if (!art)
+                art = read_artwork(cached);
+            // Les identifiants privés ne sont jamais envoyés au serveur public.
+            if (!art && public_ids_.count(id))
+            {
+                const auto candidate = cached + ".incoming";
+                const auto error = transfer(
+                    "https://raw.githubusercontent.com/tomoff1/ps5-hub/main/assets/covers/" + id + ".hubart",
+                    candidate, "", 12 + 256 * 384 * 4);
+                if (error.empty())
+                {
+                    art = read_artwork(candidate);
+                    if (art && std::rename(candidate.c_str(), cached.c_str()) != 0)
+                        art.reset();
+                }
+                std::remove(candidate.c_str());
+            }
             if (art)
                 covers.emplace(id, std::move(art));
         }
@@ -267,6 +292,32 @@ void Service::execute()
         state_.busy = false;
         ++state_.artwork_revision;
         ++state_.revision;
+        return;
+    }
+    if (job_ == Job::sync)
+    {
+        const auto candidate = root_ + "/shared.incoming";
+        auto error = transfer(
+            "https://raw.githubusercontent.com/tomoff1/ps5-hub/main/shared/catalog.tsv",
+            candidate, "", 4 * 1024 * 1024);
+        std::string text;
+        std::vector<Entry> entries;
+        if (error.empty() && !save::read_file(candidate, &text, 4 * 1024 * 1024))
+            error = "Réponse du catalogue illisible";
+        if (error.empty() && !parse_catalog(text, entries, error))
+            error = "Catalogue distant invalide : " + error;
+        if (error.empty() && entries.empty())
+            error = "Catalogue distant vide, copie précédente conservée";
+        if (error.empty())
+            error = save::write_atomic(root_ + "/shared.tsv", text);
+        std::remove(candidate.c_str());
+        if (!error.empty())
+        {
+            finish("Actualisation impossible. Catalogue conservé. " + error);
+            return;
+        }
+        job_ = Job::load;
+        execute();
         return;
     }
     if (job_ == Job::load)
@@ -279,7 +330,20 @@ void Service::execute()
             finish("Catalogue fourni illisible : " + error);
             return;
         }
+        // Le catalogue partagé remplace uniquement les fiches fournies ; les
+        // imports privés sont fusionnés ensuite et restent prioritaires.
+        struct stat shared_facts{};
+        if (stat((root_ + "/shared.tsv").c_str(), &shared_facts) == 0)
+        {
+            std::vector<Entry> shared;
+            if (save::read_file(root_ + "/shared.tsv", &text, 4 * 1024 * 1024) &&
+                parse_catalog(text, shared, error) && !shared.empty())
+                all = std::move(shared);
+        }
         struct stat library_facts{};
+        public_ids_.clear();
+        for (const auto &entry : all)
+            public_ids_.insert(entry.id);
         if (stat((assets_ + "/library.tsv").c_str(), &library_facts) == 0)
         {
             std::vector<Entry> library;
@@ -375,7 +439,7 @@ void Service::execute()
         auto error = validate(entry_);
         if (error.empty() && !valid_hash(entry_.sha256))
             error = "Ajoute le SHA-256 fourni par l’auteur avant de télécharger";
-        if (error.empty() && entry_.kind == "link")
+        if (error.empty() && is_reference(entry_))
             error = "Cette fiche est un lien de référence, pas un fichier";
         if (error.empty())
             error = transfer(entry_.url,

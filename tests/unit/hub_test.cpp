@@ -2,6 +2,8 @@
 // Copyright (C) 2026 PS5 Hub contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "hub/catalog.hpp"
+#include "hub/artwork.hpp"
+#include "core/save_file.hpp"
 #include <gtest/gtest.h>
 
 TEST(HubCatalog, RoundTripFrenchAndQueryString)
@@ -59,4 +61,44 @@ TEST(HubVersion, NumericRatherThanLexicographic)
     EXPECT_EQ(hub::compare_version("01.002.003", "1.2.3"), 0);
     EXPECT_EQ(hub::compare_version("1.2", "1.2.3"), -2);
     EXPECT_EQ(hub::compare_version("1.2.3x", "1.2.3"), -2);
+}
+TEST(HubCatalog, DistinguishesGameArchivesAndReferencePages)
+{
+    hub::Entry game{"port", "Portage", "1.0.0", "game", "https://example.org/port", "", ""};
+    EXPECT_TRUE(hub::validate(game).empty());
+    EXPECT_TRUE(hub::is_game(game));
+    EXPECT_TRUE(hub::is_reference(game));
+    game.sha256 = std::string(64, 'a');
+    game.url = "https://example.org/port.zip";
+    EXPECT_FALSE(hub::is_reference(game));
+    std::vector<hub::Entry> parsed;
+    std::string error;
+    ASSERT_TRUE(hub::parse_catalog(hub::serialize({game}), parsed, error));
+    EXPECT_TRUE(hub::is_game(parsed[0]));
+}
+TEST(HubCatalog, SearchesAllWordsWithFrenchAccents)
+{
+    hub::Entry game{"ete", "Été à Paris", "1.0.0", "game", "https://example.org", "", "Jeu de stratégie"};
+    EXPECT_TRUE(hub::matches(game, "  PARIS ete  "));
+    EXPECT_TRUE(hub::matches(game, "strategie"));
+    EXPECT_FALSE(hub::matches(game, "Paris Lyon"));
+    EXPECT_TRUE(hub::matches(game, ""));
+}
+TEST(HubCatalog, BundledCatalogAndItsPublicArtworkAreReadable)
+{
+    std::string text, error;
+    std::vector<hub::Entry> entries;
+    ASSERT_TRUE(hui::save::read_file("assets/catalog.tsv", &text));
+    ASSERT_TRUE(hub::parse_catalog(text, entries, error)) << error;
+    EXPECT_GE(entries.size(), 90u);
+    std::size_t games = 0;
+    for (const auto &entry : entries)
+    {
+        games += hub::is_game(entry);
+        if (entry.id.starts_with("ppsa"))
+            EXPECT_NE(hub::read_artwork("assets/covers/" + entry.id + ".hubart"), nullptr) << entry.id;
+        if (!hub::is_reference(entry))
+            EXPECT_TRUE(hub::valid_hash(entry.sha256)) << entry.id;
+    }
+    EXPECT_GE(games, 31u);
 }

@@ -1,8 +1,8 @@
 # PS5 Hub
 
-Application homebrew **native C++20 / OpenGL** pour PS5, en français. L’alpha 0.2 ajoute une bibliothèque graphique et un bot Windows pour préparer et transférer vos PKG personnels.
+Application homebrew **native C++20 / OpenGL** pour PS5, en français. L’alpha 0.3 fournit un accueil de découverte, 90 projets PS5 publiés dont 31 jeux ou portages, leurs icônes, la recherche, les favoris et des fiches avec QR pour le téléphone. Le bot Windows prépare et transfère vos PKG personnels.
 
-**Démarrage de l’alpha 0.1 signalé sur la PS5 13.60 de l’utilisateur**, avec photos du titre sur l’accueil et de l’interface. Cela reste une validation partielle : l’alpha 0.2 et le transfert HyperDPI ne sont pas encore testés sur sa console. Les versions exactes de HyperHEN et ShadowMountPlus restent inconnues.
+**Démarrage de l’alpha 0.1 signalé sur la PS5 13.60 de l’utilisateur**, avec photos du titre sur l’accueil et de l’interface. Cela reste une validation partielle : l’alpha 0.3 et le transfert HyperDPI ne sont pas encore testés sur sa console. Les versions exactes de HyperHEN et ShadowMountPlus restent inconnues.
 
 ![Accueil de PS5 Hub, rendu du C++ natif avec Mesa sur PC](docs/images/accueil.jpg)
 
@@ -17,7 +17,9 @@ Capture du rendu natif sur PC ; aucune capture PS5 n’est présentée comme pre
 - Transfert de gros PKG depuis le PC : FTP vérifié ou demande d’installation à HyperDPI après confirmation. Les fichiers ne sont pas convertis.
 - Navigation au pavé directionnel / stick, actions DualSense et clavier à l’écran du kit.
 - Icône originale et dossier de titre natif `PPSA99841` pour les chargeurs compatibles avec les dossiers homebrew.
-- Catalogue de projets libres, avec une archive officielle Homebrew UI Lab et son empreinte de release.
+- Catalogue partagé de 90 projets publiés et deux références de développement, fourni avec le ZIP pour fonctionner hors ligne. Actualisation HTTPS, recherche par mots, filtres Tous / Favoris / Archives.
+- Fiches avec QR vers les développeurs, téléchargements de leurs ZIP avec empreinte SHA-256 lorsqu’ils sont disponibles. Les portages peuvent nécessiter vos données originales.
+- Favoris sauvegardés sur la console ; les imports personnels restent prioritaires et privés.
 - Ajout de liens personnels vers des archives ou des PKG depuis la manette ; sauvegarde dans le stockage du titre.
 - Téléchargement après confirmation, HTTPS vérifié, contrôle SHA-256 obligatoire, annulation et fichiers temporaires.
 - Liste des téléchargements, préférences persistantes, journal des erreurs et recherche de version PS5 Hub.
@@ -25,11 +27,13 @@ Capture du rendu natif sur PC ; aucune capture PS5 n’est présentée comme pre
 
 **Limites :** l’application PS5 ne réalise pas encore d’installation système elle-même et n’explore pas tout le disque. Ses petits téléchargements utilisent le stockage privé. Les gros PKG passent par le bot PC ; une acceptation HyperDPI n’est pas annoncée comme une installation terminée. Aucune collection de jeux commerciaux n’est fournie.
 
+Le [guide du catalogue partagé](docs/CATALOGUE_PARTAGE_FR.md) explique les commandes, les sources, la publication des fiches et les limites. Il ne s’agit pas du catalogue commercial de PSPKG ; aucun flux ni téléchargement commercial de ce site n’est intégré.
+
 ## Importer tous vos liens
 
 Téléchargez le ZIP **PS5-Hub-Bot-PC** dans les [préversions](https://github.com/tomoff1/ps5-hub/releases). Lancez **Bibliotheque-PC.cmd**, collez un lien direct par ligne, préparez la liste puis synchronisez-la avec l’IP locale de votre PS5. Un CSV permet de fournir les noms et les jaquettes. Le [guide du bot](docs/BOT_BIBLIOTHEQUE_FR.md) détaille aussi le transfert PKG et HyperDPI.
 
-PS5 Hub 0.1 vérifie les versions mais ne se met pas à jour automatiquement. Pour passer à 0.2, fermez l’application et remplacez les fichiers du dossier `PPSA99841` par ceux du nouveau ZIP, en conservant vos fichiers personnels. Une synchronisation du bot ajoute les fiches et images ; elle ne remplace pas l’exécutable.
+PS5 Hub 0.1 vérifie les versions mais ne se met pas à jour automatiquement. Pour passer à 0.3, fermez l’application et remplacez les fichiers du dossier `PPSA99841` par ceux du nouveau ZIP, en conservant vos fichiers personnels. Une synchronisation du bot ajoute les fiches et images ; elle ne remplace pas l’exécutable.
 
 ## Compiler et installer
 
@@ -43,7 +47,7 @@ bash tools/hub-build.sh
 
 Le dossier de test est `dist/PPSA99841/`. Le ZIP expérimental et son SHA-256 sont créés dans `dist/`. Un build réussi confirme la compilation et le format ; il ne confirme pas la compatibilité matérielle.
 
-[Résultats des tests locaux 0.2](docs/VALIDATION_ALPHA2.md) : 427 tests C++ réussis, 11 tests Python du bot et des outils FTP, rendus OpenGL vérifiés. Le protocole HyperDPI est vérifié contre un simulateur, sans installation réelle sur console. Le [rapport 0.1](docs/VALIDATION_PC.md) reste disponible pour l’ancien binaire.
+[Validation locale de la 0.3](docs/VALIDATION_ALPHA3.md). Le [rapport 0.2](docs/VALIDATION_ALPHA2.md) et le [rapport 0.1](docs/VALIDATION_PC.md) restent disponibles pour les anciens binaires. Aucun test PC ne valide le firmware de la console.
 
 ## Sources et architecture
 
@@ -57,4 +61,4 @@ Le catalogue personnel et les journaux restent sur la console. Le dépôt public
 - [ps5-native-app-boilerplate](https://github.com/blackbearreloaded/ps5-native-app-boilerplate), commit `44ae1dab529654eac795d2a7c4f5a0425102b8d7` : référence de packaging et adaptateur libcurl console.
 - SDK public ps5-payload-dev, ps5-opengl et PacBrew : dépendances récupérées par les scripts épinglés du kit.
 
-Licence **GPL-3.0-or-later**, avec les licences tierces dans [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Distribuez les sources correspondantes avec les versions binaires et conservez les notices. PS5 Hub est un projet indépendant, sans affiliation avec Sony ou Overdrive ; ses visuels sont originaux.
+Licence **GPL-3.0-or-later**, avec les licences tierces dans [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Distribuez les sources correspondantes avec les versions binaires et conservez les notices. PS5 Hub est un projet indépendant, sans affiliation avec Sony ou Overdrive ; son identité visuelle est originale et les icônes des projets sont attribuées à leurs développeurs.

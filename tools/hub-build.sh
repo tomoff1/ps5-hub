@@ -9,9 +9,14 @@ cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 if [[ $PWD == *[[:space:]]* ]]; then
     original=$PWD
     key=$(printf '%s' "$original" | sha256sum | cut -c1-16)
-    cache="${XDG_CACHE_HOME:-$HOME/.cache}/ps5-hub/$key"
+    cache="${HUB_BUILD_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/ps5-hub/$key}"
+    if [[ $cache == *[[:space:]]* || $cache != /* ]]; then
+        echo "HUB_BUILD_CACHE doit être un chemin Linux absolu sans espaces." >&2
+        exit 1
+    fi
     mkdir -p "$cache"
-    tar --exclude=.git --exclude=.deps --exclude=build --exclude=dist -cf - . | tar -xf - -C "$cache"
+    tar --exclude=.git --exclude=.deps --exclude=build --exclude=dist \
+        --exclude=.local --exclude=node_modules --exclude=.wrangler -cf - . | tar -xf - -C "$cache"
     bash "$cache/tools/hub-build.sh"
     mkdir -p "$original/dist"
     cp -a "$cache/dist/." "$original/dist/"

@@ -18,6 +18,29 @@ bash tools/hub-build.sh
 
 Gardez de préférence le dépôt dans le système de fichiers Linux de WSL. Les dépendances ont besoin d’un espace disque libre suffisant et d’un accès HTTPS à GitHub. Les scripts téléchargent des versions épinglées du SDK public, de ps5-opengl et des ports PacBrew et vérifient les empreintes prévues par l’amont.
 
+### Stocker la compilation sur D:
+
+Le clone Windows peut rester dans `D:\pkg app ps5\ps5-hub`. Le cache Linux est
+stocké dans le disque virtuel de la distribution WSL : placer uniquement le clone
+sur D: ne déplace donc pas les dépendances Linux. Sur une version de WSL proposant
+`--manage --move`, fermez les tâches de cette distribution puis utilisez, par
+exemple, `wsl --manage kali-linux --move "D:\pkg app ps5\wsl-kali"`.
+Le dossier de destination ne doit pas déjà exister. Cette commande déplace la
+distribution complète et conserve ses fichiers ; ne la remplacez pas par
+`--unregister`. Les autres distributions et les données de Windows restent à leur
+emplacement actuel.
+
+`HUB_BUILD_CACHE` permet de choisir un cache Linux absolu sans espaces. Par exemple,
+`HUB_BUILD_CACHE=/tmp/ps5-hub-build bash tools/hub-build.sh` réutilise ce cache
+dans la distribution déplacée. Les dossiers `.local`, `node_modules` et
+`.wrangler` ne sont pas copiés dans le cache de compilation.
+
+Pour le serveur de catalogue, `./Start-HubServer.ps1 -Action build` utilise les
+temporaires, les journaux Wrangler et le cache npm du dossier `.local` du projet, donc sur D: si le
+projet est sur D:. Les actions `test`, `dev`, `deploy` et `whoami` sont également
+disponibles. Ce réglage s'applique seulement au processus lancé ; il ne modifie
+pas les variables globales de Windows ni les identifiants Cloudflare.
+
 Depuis un clone Windows, le point d’entrée complet est :
 
 ```powershell

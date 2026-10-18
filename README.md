@@ -27,7 +27,9 @@ Capture du rendu natif sur PC ; aucune capture PS5 n’est présentée comme pre
 
 **Limites :** l’application PS5 ne réalise pas encore d’installation système elle-même et n’explore pas tout le disque. Ses petits téléchargements utilisent le stockage privé. Les gros PKG passent par le bot PC ; une acceptation HyperDPI n’est pas annoncée comme une installation terminée. Aucune collection de jeux commerciaux n’est fournie.
 
-Le [guide du catalogue partagé](docs/CATALOGUE_PARTAGE_FR.md) explique les commandes, les sources, la publication des fiches et les limites. Il ne s’agit pas du catalogue commercial de PSPKG ; aucun flux ni téléchargement commercial de ce site n’est intégré.
+Le [guide du catalogue partagé](docs/CATALOGUE_PARTAGE_FR.md) explique le flux de l’alpha 0.3. Elle n’intègre aucun téléchargement commercial de PSPKG.
+
+Le [service de catalogue Cloudflare](docs/CLOUDFLARE_FR.md) ajoute une administration protégée, des connecteurs indépendants et un flux natif v2. Son premier instantané contient 92 fiches communautaires et 40 références PSPKG issues de pages publiques, avec leurs URL de jaquettes. Les références PSPKG ne fournissent aucun lien PKG. Le raccordement du client PS5 à ce nouveau service reste en cours ; publier le serveur ne met pas à jour l’exécutable déjà installé sur la console.
 
 ## Importer tous vos liens
 

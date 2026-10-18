@@ -7,6 +7,22 @@ on:
 permissions:
   contents: read
 jobs:
+  catalog-service:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npm run build
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 45

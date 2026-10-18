@@ -1,0 +1,13 @@
+{
+  "name": "ps5-hub-catalog-service",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "dev": "wrangler dev --local --ip 127.0.0.1",
+    "build": "wrangler deploy --dry-run --outdir build",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": { "linkedom": "0.18.13" },
+  "devDependencies": { "wrangler": "4.151.1" }
+}

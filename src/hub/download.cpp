@@ -13,6 +13,8 @@
 #include <mutex>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <cerrno>
+#include <cstring>
 #ifdef HUB_PS5
 #include "platform/ps5/console_curl.h"
 #endif
@@ -54,7 +56,9 @@ struct Sink
     EVP_MD_CTX *hash = nullptr;
     std::uint64_t offset = 0, count = 0, total = 0, range_start = 0;
     long status = 0;
-    bool range_valid = false, restart = false, rejected = false;
+    bool range_valid = false, restart = false, rejected = false, html = false;
+    int storage_errno = 0;
+    std::string rejection, prefix, retry_after, statuses, storage_reason;
     std::string etag, content_type, identity;
     std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now(),
                                           reported = began;
@@ -72,9 +76,14 @@ std::size_t headers(char *data, std::size_t size, std::size_t count, void *user)
     {
         const auto space = line.find(' ');
         s.status = space == line.npos ? 0 : std::strtol(line.c_str() + space + 1, nullptr, 10);
+        if (s.statuses.size() < 100)
+            s.statuses += (s.statuses.empty() ? "" : ",") + std::to_string(s.status);
         s.etag.clear();
         s.content_type.clear();
         s.range_valid = false;
+        s.rejection.clear();
+        s.rejected = s.html = false;
+        s.retry_after.clear();
         s.total = s.request.expected_size;
     }
     const auto colon = line.find(':');
@@ -96,13 +105,20 @@ std::size_t headers(char *data, std::size_t size, std::size_t count, void *user)
             for (auto &c : s.content_type)
                 c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         }
+        else if (key == "retry-after")
+        {
+            std::uint64_t seconds = 0;
+            const auto r = std::from_chars(value.data(), value.data() + value.size(), seconds);
+            if (r.ec == std::errc{} && r.ptr == value.data() + value.size() && seconds <= 86400)
+                s.retry_after = std::to_string(seconds);
+        }
         else if (key == "content-length")
         {
             std::uint64_t bytes = 0;
             const auto result = std::from_chars(value.data(), value.data() + value.size(), bytes);
             if (!s.range_valid && result.ec == std::errc{} &&
-                result.ptr == value.data() + value.size() && bytes <= s.request.limit)
-                s.total = s.offset + bytes;
+                result.ptr == value.data() + value.size())
+                s.total = s.status == 206 ? s.offset + bytes : bytes;
         }
         else if (key == "content-range")
         {
@@ -123,10 +139,25 @@ std::size_t headers(char *data, std::size_t size, std::size_t count, void *user)
     {
         if (s.offset && s.status == 200)
             s.restart = true;
-        if ((s.status == 206 && (!s.range_valid || s.range_start != s.offset)) ||
-            s.total > s.request.limit || s.content_type.starts_with("text/html") ||
-            (s.request.expected_size && s.total && s.total != s.request.expected_size))
-            s.rejected = true;
+        if (s.content_type.starts_with("text/html") ||
+            s.content_type.starts_with("application/xhtml+xml"))
+        {
+            s.html = true;
+            s.rejection = "HTML_PAGE";
+        }
+        else if (s.status == 206 && (!s.range_valid || s.range_start != s.offset))
+            s.rejection = "RANGE_INVALID";
+        else if (s.total > s.request.limit)
+            s.rejection = "SIZE_LIMIT";
+        else if (s.request.expected_size && s.total && s.total != s.request.expected_size)
+            s.rejection = "SIZE_MISMATCH";
+        if (s.rejection.empty() && !s.restart && s.request.check_space && s.total > s.offset)
+        {
+            s.storage_reason = s.request.check_space(s.total - s.offset);
+            if (!s.storage_reason.empty())
+                s.rejection = "NO_SPACE";
+        }
+        s.rejected = !s.rejection.empty();
         if (!s.restart && !s.rejected && s.request.retain_partial)
         {
             // Aucun jeton ou lien personnel lisible dans le fichier de reprise.
@@ -144,10 +175,52 @@ std::size_t write(char *data, std::size_t size, std::size_t n, void *user)
     const auto bytes = size * n;
     if (s.status >= 300 && s.status < 400)
         return bytes;
-    if (stopped(s.request) || s.restart || s.rejected || (s.status != 200 && s.status != 206) ||
-        s.offset + s.count > s.request.limit || bytes > s.request.limit - s.offset - s.count)
+    if (stopped(s.request) || s.restart || s.rejected || (s.status != 200 && s.status != 206))
         return 0;
-    if (std::fwrite(data, 1, bytes, s.file) != bytes || EVP_DigestUpdate(s.hash, data, bytes) != 1)
+    if (s.offset + s.count > s.request.limit || bytes > s.request.limit - s.offset - s.count)
+    {
+        s.rejected = true;
+        s.rejection = "SIZE_LIMIT";
+        return 0;
+    }
+    if (s.prefix.size() < 512)
+    {
+        s.prefix.append(data, std::min<std::size_t>(bytes, 512 - s.prefix.size()));
+        auto prefix = s.prefix;
+        for (auto &c : prefix)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (prefix.starts_with("\xef\xbb\xbf"))
+            prefix.erase(0, 3);
+        const auto begin = prefix.find_first_not_of(" \t\r\n");
+        if (begin != prefix.npos)
+            prefix.erase(0, begin);
+        if (prefix.starts_with("<!doctype html") || prefix.starts_with("<html") ||
+            prefix.starts_with("<head") || prefix.starts_with("<body") ||
+            prefix.starts_with("<script") || prefix.starts_with("<?xml"))
+        {
+            s.html = s.rejected = true;
+            s.rejection = "HTML_PAGE";
+            return 0;
+        }
+        if (!s.offset && s.request.expected_format == "PKG" && s.prefix.size() >= 4 &&
+            s.prefix.compare(0, 4,
+                             "\x7f"
+                             "CNT") != 0 &&
+            s.prefix.compare(0, 4,
+                             "\x7f"
+                             "FIH") != 0)
+        {
+            s.rejected = true;
+            s.rejection = "NOT_PKG";
+            return 0;
+        }
+    }
+    if (std::fwrite(data, 1, bytes, s.file) != bytes)
+    {
+        s.storage_errno = errno ? errno : EIO;
+        return 0;
+    }
+    if (EVP_DigestUpdate(s.hash, data, bytes) != 1)
         return 0;
     s.count += bytes;
     const auto now = std::chrono::steady_clock::now();
@@ -298,6 +371,7 @@ DownloadResult download_file(const DownloadRequest &r)
             }
         }
         sink.file = ok ? std::fopen(part.c_str(), offset ? "ab" : "wb") : nullptr;
+        const int preparation_errno = ok && !sink.file ? errno : 0;
         auto *curl = curl_easy_init();
         if (!ok || !sink.file || !curl || stopped(r))
         {
@@ -307,7 +381,19 @@ DownloadResult download_file(const DownloadRequest &r)
                 curl_easy_cleanup(curl);
             EVP_MD_CTX_free(sink.hash);
             result.error = stopped(r) ? "Téléchargement suspendu ; reprise conservée"
-                                      : "Impossible de préparer le stockage";
+                                      : "Impossible de préparer le stockage (errno " +
+                                            std::to_string(preparation_errno) +
+                                            ") : " + std::strerror(preparation_errno);
+            result.failure_code = stopped(r) ? "PAUSED"
+                                  : !ok      ? "HASH_ENGINE"
+                                  : !curl    ? "NETWORK_INIT"
+                                             : "STORAGE_SETUP";
+            if (!ok)
+                result.error = "Initialisation du moteur SHA-256 impossible";
+            else if (!curl)
+                result.error = "Création du client réseau impossible";
+            result.diagnostic =
+                "result=" + result.failure_code + " errno=" + std::to_string(preparation_errno);
             return result;
         }
 #ifdef HUB_PS5
@@ -329,7 +415,8 @@ DownloadResult download_file(const DownloadRequest &r)
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, r.retain_partial ? 86400L : 60L);
         curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 128L);
         curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 45L);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "PS5-Hub/0.4");
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "PS5-Hub/0.6");
+        curl_easy_setopt(curl, CURLOPT_SUPPRESS_CONNECT_HEADERS, 1L);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &sink);
         curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, headers);
@@ -352,11 +439,20 @@ DownloadResult download_file(const DownloadRequest &r)
         sink.began = std::chrono::steady_clock::now();
         const auto rc = curl_easy_perform(curl);
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &result.http_status);
+        long redirects = 0, tls_verify = 0;
+        curl_easy_getinfo(curl, CURLINFO_REDIRECT_COUNT, &redirects);
+        curl_easy_getinfo(curl, CURLINFO_SSL_VERIFYRESULT, &tls_verify);
         bool disk = std::fflush(sink.file) == 0;
         if (disk)
             disk = fsync(fileno(sink.file)) == 0;
+        if (!disk && !sink.storage_errno)
+            sink.storage_errno = errno ? errno : EIO;
         if (std::fclose(sink.file) != 0)
+        {
             disk = false;
+            if (!sink.storage_errno)
+                sink.storage_errno = errno ? errno : EIO;
+        }
         unsigned char digest[32];
         unsigned length = 0;
         ok = EVP_DigestFinal_ex(sink.hash, digest, &length) == 1 && length == 32;
@@ -366,32 +462,127 @@ DownloadResult download_file(const DownloadRequest &r)
         curl_slist_free_all(request_headers);
         curl_easy_cleanup(curl);
         EVP_MD_CTX_free(sink.hash);
-        if (sink.restart && attempt == 0 && !stopped(r))
+        if (sink.restart && !sink.rejected && attempt == 0 && !stopped(r))
         {
             offset = 0;
             validator.clear();
             continue;
         }
         if (stopped(r))
+        {
+            result.failure_code = "PAUSED";
             result.error = "Téléchargement suspendu ; reprise conservée";
-        else if (result.http_status == 401)
-            result.error = "Authentification requise par la source";
-        else if (result.http_status == 403)
-            result.error = "Accès refusé ou vérification de la source requise";
-        else if (result.http_status == 429)
-            result.error = "Limite de requêtes de la source ; réessayez plus tard";
+        }
+        else if (result.http_status >= 400)
+        {
+            result.failure_code = "HTTP_" + std::to_string(result.http_status);
+            if (result.http_status == 401)
+                result.error = "HTTP 401 : connexion requise par la source. La session du "
+                               "navigateur n’est pas partagée avec le Hub.";
+            else if (result.http_status == 403)
+                result.error =
+                    "HTTP 403 : accès refusé. Vérification, droits d’accès ou lien signé expiré "
+                    "possibles ; la source ne précise pas davantage la cause.";
+            else if (result.http_status == 404 || result.http_status == 410)
+                result.error = "HTTP " + std::to_string(result.http_status) +
+                               ": fichier absent ou lien retiré/expiré. Actualisez le catalogue ou "
+                               "choisissez une autre source autorisée.";
+            else if (result.http_status == 429)
+                result.error = "HTTP 429 : limite de requêtes atteinte. " +
+                               (sink.retry_after.empty()
+                                    ? std::string("Réessayez plus tard.")
+                                    : "Attendez au moins " + sink.retry_after + " secondes.");
+            else
+                result.error = "HTTP " + std::to_string(result.http_status) +
+                               ": erreur renvoyée par la source. Aucun fichier final publié.";
+        }
         else if (sink.rejected)
-            result.error = "Réponse HTML, plage ou taille inattendue : téléchargement refusé";
+        {
+            result.failure_code = sink.rejection;
+            result.error =
+                sink.rejection == "NO_SPACE" ? sink.storage_reason
+                : sink.html ? "Page HTML reçue, pas un fichier : publicité, page intermédiaire ou "
+                              "vérification possible. Aucun script exécuté. Choisissez le filtre "
+                              "Téléchargeables ou fournissez un lien direct autorisé."
+                : sink.rejection == "NOT_PKG"
+                    ? "Le contenu reçu n’a pas de signature PKG CNT/FIH. Le lien désigne un autre "
+                      "fichier ou une réponse intermédiaire."
+                : sink.rejection == "RANGE_INVALID"
+                    ? "Réponse de reprise HTTP invalide : plage différente du préfixe local. "
+                      "Fichier partiel conservé."
+                : sink.rejection == "SIZE_LIMIT"
+                    ? "La taille annoncée ou reçue dépasse la limite du téléchargement. Aucun "
+                      "fichier final publié."
+                    : "Taille annoncée différente du catalogue. Aucun fichier final publié.";
+        }
+        else if (sink.storage_errno || !disk)
+        {
+            result.failure_code = "STORAGE";
+            result.error = "Écriture du stockage impossible (errno " +
+                           std::to_string(sink.storage_errno) +
+                           ") : " + std::strerror(sink.storage_errno) +
+                           ". Vérifiez l’espace libre et les droits du titre.";
+        }
         else if (rc != CURLE_OK)
-            result.error = "Téléchargement interrompu (code " + std::to_string(rc) +
-                           ") ; réouvrez la fiche pour reprendre";
-        else if (!disk || !ok)
-            result.error = "Écriture ou vérification impossible ; vérifiez l’espace libre";
+        {
+            result.failure_code = "CURL_" + std::to_string(rc);
+            switch (rc)
+            {
+            case CURLE_PEER_FAILED_VERIFICATION:
+                result.error = "Certificat HTTPS refusé : vérifiez la date de la console et la "
+                               "chaîne de confiance du serveur. La vérification TLS reste activée.";
+                break;
+            case CURLE_SSL_CACERT_BADFILE:
+                result.error = "Liste de certificats CA illisible dans l’environnement PS5. "
+                               "Vérifiez les droits et le montage du titre.";
+                break;
+            case CURLE_SSL_CONNECT_ERROR:
+                result.error =
+                    "Échec de négociation HTTPS avec le serveur ; connexion sécurisée non établie.";
+                break;
+            case CURLE_TOO_MANY_REDIRECTS:
+                result.error = "Plus de cinq redirections HTTP : boucle ou chaîne intermédiaire. "
+                               "Aucun navigateur ni pop-up ouvert.";
+                break;
+            case CURLE_UNSUPPORTED_PROTOCOL:
+                result.error =
+                    "Protocole de redirection refusé : seuls les liens HTTPS sont acceptés.";
+                break;
+            case CURLE_COULDNT_RESOLVE_HOST:
+                result.error = "Nom du serveur introuvable (DNS). Vérifiez la connexion réseau et "
+                               "l’adresse de la source.";
+                break;
+            case CURLE_COULDNT_CONNECT:
+                result.error =
+                    "Connexion au serveur impossible. Vérifiez le réseau ou réessayez plus tard.";
+                break;
+            case CURLE_OPERATION_TIMEDOUT:
+                result.error = "Délai réseau dépassé ou débit trop faible ; reprise conservée dans "
+                               "Téléchargements.";
+                break;
+            default:
+                result.error = "Transfert interrompu (libcurl " + std::to_string(rc) +
+                               "). Reprenez depuis Téléchargements.";
+            }
+        }
+        else if (result.http_status != 200 && result.http_status != 206)
+        {
+            result.failure_code = "HTTP_" + std::to_string(result.http_status);
+            result.error = "HTTP " + std::to_string(result.http_status) +
+                           ": aucune réponse fichier exploitable. Redirection incomplète ou "
+                           "réponse sans contenu ; choisissez une URL directe autorisée.";
+        }
+        else if (!ok)
+        {
+            result.failure_code = "HASH_ENGINE";
+            result.error = "Moteur de vérification SHA-256 indisponible";
+        }
         else if ((r.expected_size && result.bytes != r.expected_size) ||
                  (sink.total && result.bytes != sink.total))
             result.error = "Fichier encore partiel ; reprise conservée";
         else if (!r.sha256.empty() && result.actual_sha256 != r.sha256)
         {
+            result.failure_code = "HASH_MISMATCH";
             result.error = "SHA-256 incorrect : fichier rejeté";
             std::remove(part.c_str());
             std::remove(metadata.c_str());
@@ -410,6 +601,27 @@ DownloadResult download_file(const DownloadRequest &r)
             else
                 std::remove(metadata.c_str());
         }
+        if ((sink.html || sink.rejection == "NOT_PKG") && offset)
+        {
+            if (truncate(part.c_str(), static_cast<off_t>(offset)) != 0)
+                result.error += " Restauration du préfixe partiel impossible.";
+            else
+                result.bytes = offset;
+        }
+        if ((sink.html || sink.rejection == "NOT_PKG") && !offset)
+        {
+            std::remove(part.c_str());
+            std::remove(metadata.c_str());
+        }
+        result.diagnostic =
+            "HTTP=" + std::to_string(result.http_status) + " chain=" + sink.statuses +
+            " curl=" + std::to_string(rc) + " redirects=" + std::to_string(redirects) +
+            " tls_verify=" + std::to_string(tls_verify) +
+            " errno=" + std::to_string(sink.storage_errno) +
+            " bytes=" + std::to_string(result.bytes) + " resumed=" + (result.resumed ? "1" : "0");
+        if (result.failure_code.empty())
+            result.failure_code = result.error.empty() ? "OK" : "VALIDATION";
+        result.diagnostic += " result=" + result.failure_code;
         if (!r.retain_partial && !result.error.empty())
         {
             std::remove(part.c_str());

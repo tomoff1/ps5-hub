@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cerrno>
+#include <ctime>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -64,7 +65,7 @@ bool Service::add(Entry e)
 {
     return start(Job::add, std::move(e));
 }
-bool Service::download(Entry e)
+bool Service::download(Entry e, bool install_after)
 {
     const auto blocked = download_block_reason(e);
     std::lock_guard lock(mutex_);
@@ -74,12 +75,39 @@ bool Service::download(Entry e)
         ++state_.revision;
         return false;
     }
-    for (const auto &t : state_.transfers)
+    if (install_after && (!state_.installer_available || (e.kind != "pkg" && e.format != "PKG")))
+    {
+        state_.message = "Télécharger et installer exige un PKG et etaHEN DPIv2 identifié.";
+        ++state_.revision;
+        return false;
+    }
+    for (auto &t : state_.transfers)
         if (t.entry.id == e.id)
+        {
+            if (t.state == "failed" || t.state == "paused" || t.state == "cancelled" ||
+                t.state == "cleaned")
+            {
+                const auto previous = t;
+                t.entry = std::move(e);
+                t.state = "queued";
+                t.message = "Reprise demandée depuis la fiche";
+                t.install_after = install_after;
+                const auto error = persist_transfers();
+                if (!error.empty())
+                {
+                    t = previous;
+                    state_.message = "Reprise non enregistrée : " + error;
+                }
+                ++state_.revision;
+                return error.empty();
+            }
+            state_.message = "Ce contenu est déjà en cours ou vérifié. Consultez Téléchargements.";
+            ++state_.revision;
             return false;
+        }
     if (state_.transfers.size() >= 200)
         return false;
-    state_.transfers.push_back({std::move(e), "queued", "En attente"});
+    state_.transfers.push_back({std::move(e), "queued", "En attente", install_after});
     const auto error = persist_transfers();
     if (!error.empty())
     {
@@ -113,6 +141,8 @@ std::string Service::persist_transfers()
     {
         entries.push_back(t.entry);
         states += "#TRANSFER\t" + t.entry.id + "\t" + t.state + "\n";
+        if (t.install_after)
+            states += "#AUTO_INSTALL\t" + t.entry.id + "\t1\n";
         auto message = t.message.substr(0, 800);
         for (auto &c : message)
             if (static_cast<unsigned char>(c) < 32)
@@ -146,8 +176,8 @@ void Service::restore_transfers()
     for (auto &e : entries)
     {
         auto status = std::string("paused");
-        for (const auto *candidate :
-             {"complete", "cancelled", "accepted", "unknown", "installing", "install_error"})
+        for (const auto *candidate : {"complete", "cancelled", "accepted", "unknown", "installing",
+                                      "install_error", "cleaned"})
             if (text.find("#TRANSFER\t" + e.id + "\t" + candidate + "\n") != text.npos)
                 status = candidate;
         if (status == "installing")
@@ -175,20 +205,30 @@ void Service::restore_transfers()
 void Service::pump()
 {
     Entry next;
+    bool installation = false;
     {
         std::lock_guard lock(mutex_);
         if (state_.busy)
             return;
         for (auto &t : state_.transfers)
-            if (t.state == "queued")
+            if (t.state == "complete" && t.install_after)
             {
                 next = t.entry;
+                installation = true;
+                t.install_after = false;
                 break;
             }
+        if (next.id.empty())
+            for (auto &t : state_.transfers)
+                if (t.state == "queued")
+                {
+                    next = t.entry;
+                    break;
+                }
     }
     if (next.id.empty())
         return;
-    start(Job::download, std::move(next));
+    start(installation ? Job::install : Job::download, std::move(next));
 }
 bool Service::pause(const std::string &id)
 {
@@ -241,6 +281,7 @@ bool Service::remove(const std::string &id)
             if (t.state == "installing" || t.state == "accepted" || t.state == "unknown" ||
                 t.state == "complete")
                 return false;
+            t.install_after = false;
             std::string deletion_error;
             if (t.state == "downloading")
             {
@@ -257,6 +298,16 @@ bool Service::remove(const std::string &id)
             ++state_.revision;
             return true;
         }
+    return false;
+}
+bool Service::cleanup(Entry e, bool installation_confirmed)
+{
+    if (!installation_confirmed || !validate(e).empty())
+        return false;
+    const auto state = snapshot();
+    for (const auto &t : state.transfers)
+        if (t.entry.id == e.id && t.state == "accepted")
+            return start(Job::cleanup, t.entry);
     return false;
 }
 bool Service::probe_installation()
@@ -338,7 +389,10 @@ bool Service::start(Job job, Entry entry)
             std::lock_guard lock(mutex_);
             for (auto &t : state_.transfers)
                 if (t.entry.id == state_.active_id)
+                {
                     t.state = "failed";
+                    t.install_after = false;
+                }
             persist_transfers();
         }
         finish("Impossible de créer le travailleur");
@@ -394,7 +448,24 @@ std::string Service::transfer(const std::string &url, const std::string &path,
         total_ = p.total;
         speed_ = p.bytes_per_second;
     };
-    return download_file(request).error;
+    const auto result = download_file(request);
+    log_network(result.diagnostic);
+    return result.error;
+}
+void Service::log_network(const std::string &diagnostic)
+{
+    const auto path = root_ + "/network.log";
+    struct stat facts{};
+    if (stat(path.c_str(), &facts) == 0 && facts.st_size > 256 * 1024)
+        std::rename(path.c_str(), (path + ".1").c_str());
+    if (auto *log = std::fopen(path.c_str(), "a"))
+    {
+        // No URLs, cookies, tokens, HTTP bodies or raw curl error buffers.
+        std::fprintf(log, "at=%lld job=%d id=%s %s\n", static_cast<long long>(std::time(nullptr)),
+                     static_cast<int>(job_), entry_.id.empty() ? "-" : entry_.id.c_str(),
+                     diagnostic.empty() ? "result=PREPARATION_FAILED" : diagnostic.c_str());
+        std::fclose(log);
+    }
 }
 void Service::execute()
 {
@@ -402,10 +473,52 @@ void Service::execute()
     if (!save::ensure_directory(root_) || !save::ensure_directory(root_ + "/downloads") ||
         !save::ensure_directory(root_ + "/covers"))
     {
-        finish("Stockage personnel inaccessible");
+        const std::string error =
+            "Stockage personnel inaccessible : vérifiez les droits et les dossiers du Hub.";
+        {
+            std::lock_guard lock(mutex_);
+            for (auto &transfer : state_.transfers)
+                if (transfer.entry.id == entry_.id &&
+                    (job_ == Job::download || job_ == Job::install))
+                {
+                    transfer.state = job_ == Job::download ? "failed" : "install_error";
+                    transfer.install_after = false;
+                    transfer.message = error;
+                }
+        }
+        finish(error);
         return;
     }
     restore_transfers();
+    if (job_ == Job::cleanup)
+    {
+        auto error = std::string{};
+        if (std::remove(download_path(entry_).c_str()) != 0 && errno != ENOENT)
+            error = "Suppression du PKG du Hub refusée : vérifiez les droits du stockage.";
+        if (error.empty())
+            error = discard_partial(download_path(entry_));
+        const auto message =
+            error.empty()
+                ? "Fichiers du Hub supprimés après confirmation manuelle de l’installation. Les "
+                  "fichiers temporaires d’etaHEN restent sous son contrôle."
+                : error;
+        {
+            std::lock_guard lock(mutex_);
+            for (auto &t : state_.transfers)
+                if (t.entry.id == entry_.id)
+                {
+                    t.state = error.empty() ? "cleaned" : "accepted";
+                    t.message = message;
+                    t.install_after = false;
+                }
+            state_.files = save::list_files(root_ + "/downloads");
+            const auto saved = persist_transfers();
+            if (!saved.empty())
+                error += " Historique non enregistré : " + saved;
+        }
+        finish(error.empty() ? message : error);
+        return;
+    }
     if (job_ == Job::probe || job_ == Job::install)
     {
         InstallerResult result;
@@ -659,6 +772,9 @@ void Service::execute()
             request.path = download_path(entry_);
             request.sha256 = entry_.sha256;
             request.expected_size = entry_.size;
+            request.expected_format = pkg ? "PKG" : "";
+            request.check_space = [this](std::uint64_t needed)
+            { return storage_check(root_ + "/downloads", needed); };
             request.cancelled = [this] { return cancelled(); };
             request.progress = [this](TransferProgress p)
             {
@@ -669,7 +785,11 @@ void Service::execute()
             if (pkg)
                 request.validate_file = [this](const std::string &path)
                 { return validate_package(path, entry_.platform, entry_.title_id); };
-            error = download_file(request).error;
+            const auto result = download_file(request);
+            error = result.error;
+            if (!error.empty() && !result.diagnostic.empty())
+                error += "\n" + result.diagnostic;
+            log_network(result.diagnostic);
 #endif
         }
         // Completion wins a late pause/cancel: never discard a verified final file.
@@ -687,6 +807,8 @@ void Service::execute()
             for (auto &t : state_.transfers)
                 if (t.entry.id == entry_.id)
                 {
+                    if (status != "complete")
+                        t.install_after = false;
                     t.state = status;
                     t.message = error.empty() ? "Fichier vérifié" : error;
                 }

@@ -1,4 +1,4 @@
-# PS5 Hub 0.5 — fonctions natives et limites
+# PS5 Hub 0.6 — fonctions natives et limites
 
 Cette version réutilise le titre C++20/OpenGL, le SDK public 0.42, le runtime
 du boilerplate, l’adaptateur libcurl PS5 et les composants DualSense existants.
@@ -7,7 +7,8 @@ Ce n’est pas un site Web. Les QR sont retirés de l’interface.
 ## Ouvrir une fiche sur la console
 
 Dans une fiche, **Triangle : Ouvrir sur PS5**. Pour une référence sans fichier
-direct autorisé, Croix propose aussi **Voir la fiche sur PS5**.
+direct autorisé, Croix affiche la cause du blocage et propose le filtre
+**Téléchargeables**, sans lancer le navigateur. Seul Triangle ouvre la page.
 Le code appelle `sceSystemServiceLaunchWebBrowser(uri, nullptr)`, avec l’ABI
 à deux arguments du [sample du SDK](https://github.com/ps5-payload-dev/sdk/blob/master/samples/browser/main.c).
 Le symbole existe dans le stub `libSceSystemService.so` du SDK utilisé.
@@ -35,15 +36,22 @@ catalogue partagé peut publier ces entrées ; Triangle dans Jeux, Homebrew ou
 Applications permet aussi de saisir un lien personnel à la manette.
 Sans empreinte, le lien peut être conservé mais ne peut pas être téléchargé.
 
-Après confirmation, le contenu rejoint une **file séquentielle**. Dans
+Croix sur une fiche directe autorisée ajoute immédiatement le contenu à une
+**file séquentielle**, sans ouvrir de navigateur ni demander une nouvelle
+confirmation pour le téléchargement seul. Le mode combiné d’installation
+exige une confirmation distincte. Dans
 **Téléchargements** :
 
 - Croix sur un travail en attente ou en cours : pause ;
 - Croix sur un travail en pause, en échec ou annulé : reprendre ou recommencer ;
 - Carré : annuler et supprimer uniquement `.part` et `.resume` de ce travail ;
-- Croix sur un PKG terminé : proposer l’envoi à etaHEN après confirmation.
+- Croix sur un PKG terminé : proposer l’envoi à etaHEN après confirmation ;
+- Triangle : afficher le diagnostic complet ;
+- Croix sur une demande acceptée : proposer de supprimer les fichiers du Hub
+  après confirmation manuelle que l’installation est terminée dans le système.
 
-La barre affiche octets reçus, taille lorsqu’elle est connue, vitesse et durée
+La barre affiche octets reçus, taille lorsqu’elle est connue, vitesse en Mo/s
+(décimal, 1 Mo = 1 000 000 octets) et durée
 restante estimée. Pendant la vérification d’un préfixe, la vitesse peut être
 nulle. La reprise utilise Range/If-Range, l’ETag et une identité de contenu ; si
 le serveur ignore Range, le transfert repart de zéro. Les données finales
@@ -98,7 +106,9 @@ ni jouabilité. Les erreurs système finales restent gérées par etaHEN.
 
 Seule la réponse HTTP 200 commençant par
 `SUCCESS: PKG installation started from file:` marque une **demande acceptée**.
-Elle ne marque jamais « installé » ou « jouable ». Un refus affiche son code
+Elle ne marque jamais « installé » ou « jouable ». Le nettoyage du Hub exige
+une confirmation manuelle de réussite dans les notifications système ; il ne
+supprime pas les temporaires partagés d’etaHEN et ne désinstalle aucun jeu. Un refus affiche son code
 etaHEN lorsqu’il est présent. Après interruption ou réponse perdue, l’état est
 **inconnu**, sans réessai automatique. Vérifier les notifications système avant
 toute nouvelle demande. Aucun endpoint de suivi de fin d’installation n’est
@@ -108,6 +118,56 @@ inventé. Les copies de staging etaHEN ne sont pas effacées automatiquement.
 
 Les tests PC utilisent des fichiers synthétiques et des serveurs locaux.
 La compilation PS5 ne constitue pas un test matériel. Voir le
-[protocole 13.60](COMPATIBILITE_13_60.md) et le [rapport 0.5](VALIDATION_ALPHA5.md).
+[protocole 13.60](COMPATIBILITE_13_60.md) et le [rapport 0.6](VALIDATION_ALPHA6.md).
 Le remplacement automatique du binaire n’est pas implémenté : le premier
 passage à cette version nécessite encore de copier le nouveau dossier natif.
+
+## Mode Télécharger et installer
+
+Dans une fiche de PKG direct autorisé, Carré propose ce mode uniquement si
+DPIv2 est identifié. Une confirmation autorise le téléchargement puis l’envoi
+après SHA-256, inspection et contrôle d’espace de staging. Aucun envoi après
+échec de téléchargement, état d’installation inconnu ou réponse perdue. Après
+redémarrage du titre, l’autorisation d’installation automatique n’est pas
+rejouée : reprendre le téléchargement puis confirmer l’installation manuellement.
+
+## Diagnostic des liens qui ne démarrent pas
+
+L’inventaire du catalogue livré ne contient aucun PKG direct déclaré autorisé.
+Les entrées PSPKG sont des références, pas des fichiers. Le filtre
+Téléchargeables contient notamment des archives homebrew ; il ne promet pas
+une collection de jeux PKG. Un administrateur peut publier une source autorisée
+avec URL directe, format, taille et SHA-256, ou vous pouvez ajouter votre lien
+personnel depuis le clavier du Hub. Une extension `.pkg` dans l’URL n’est pas
+une preuve de format ; un lien sans cette extension peut être un vrai fichier.
+
+Le transfert natif suit au plus cinq redirections HTTP vers HTTPS. Il
+n’exécute ni JavaScript publicitaire, ni pop-up, ni redirection HTML/meta-refresh.
+Si une vérification ou une session est nécessaire, il s’arrête et l’explique.
+Les vérifications TLS restent actives. Le Hub inspecte MIME et premiers octets,
+refuse HTML/XHTML même avec un faux type MIME et vérifie le préfixe CNT/FIH
+pour un PKG. Il vérifie ensuite le SHA-256 et inspecte les tables CNT/FIH dans les limites documentées.
+
+| Diagnostic | Interprétation et action |
+|---|---|
+| HTTP 401 | Connexion requise ; la session du navigateur n’est pas partagée. |
+| HTTP 403 | Accès refusé ; droits, vérification ou expiration possibles. Le code seul ne permet pas de les départager. |
+| HTTP 404 / 410 | Fichier absent ou retiré ; actualiser la source ou utiliser un autre lien autorisé. |
+| HTTP 429 | Limitation ; respecter Retry-After numérique lorsqu’il est fourni, aucun réessai automatique agressif. |
+| HTML_PAGE | Page intermédiaire reçue ; utiliser une URL directe autorisée. |
+| NOT_PKG | Le corps ne commence pas par une signature PKG prise en charge. |
+| CURL_47 | Trop de redirections ; transfert arrêté. |
+| CURL_60 | Certificat refusé ; vérifier date de la console, identité et chaîne du serveur. |
+| CURL_77 | Fichier CA système absent/illisible ; vérifier le montage du titre. |
+| NO_SPACE / STORAGE | Espace ou écriture refusés ; vérifier quota et permissions, errno dans le diagnostic. |
+
+`network.log` et `network.log.1` restent dans le stockage privé du Hub et sont
+bornés par rotation à environ 256 Kio chacun. Ils enregistrent date, identifiant,
+chaîne de statuts HTTP, nombre de redirections, code libcurl, résultat de
+vérification TLS, errno et octets reçus. Ni URL, ni jeton, ni cookie, ni corps
+HTTP ou tampon d’erreur brut n’y est journalisé. Les URL personnelles restent
+néanmoins dans `personal.tsv` / `transfers.tsv` : ne pas publier ces fichiers.
+Une tentative peut n’avoir aucun statut HTTP si elle échoue avant réception
+DNS/TLS ou avant la création du fichier. La console cible n’a pas fourni de
+journal pour reproduire un échec précis ; les diagnostics ne sont pas une
+preuve de la cause d’une tentative antérieure.

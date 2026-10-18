@@ -33,7 +33,7 @@ def package():
     shutil.copy2(ROOT/'docs/CATALOGUE_PARTAGE_FR.md',folder/'CATALOGUE_PARTAGE_FR.md')
     shutil.copy2(ROOT/'docs/CLOUDFLARE_FR.md',folder/'CLOUDFLARE_FR.md')
     shutil.copy2(ROOT/'docs/TELECHARGEMENTS_NATIFS_FR.md',folder/'TELECHARGEMENTS_NATIFS_FR.md')
-    shutil.copy2(ROOT/'docs/VALIDATION_ALPHA5.md',folder/'VALIDATION_ALPHA5.md')
+    shutil.copy2(ROOT/'docs/VALIDATION_ALPHA6.md',folder/'VALIDATION_ALPHA6.md')
     archive = ROOT / 'dist' / f'PS5-Hub-{meta["contentVersion"]}-experimental.zip'
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
         for path in sorted(folder.rglob('*')):

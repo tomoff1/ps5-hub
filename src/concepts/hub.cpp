@@ -178,7 +178,25 @@ class Hub final : public app::Concept
         {
             if (dialog_.handle(input, feedback) == ui::Event::activated && dialog_.choice() == 1)
             {
-                if (pending_install_)
+                if (pending_alternative_)
+                {
+                    pending_alternative_ = false;
+                    filter_ = 2;
+                    detail_open_ = false;
+                    grid_.set_focus(0);
+                    cover_key_.clear();
+                    refresh();
+                }
+                else if (pending_cleanup_)
+                {
+                    pending_cleanup_ = false;
+                    if (!service_.cleanup(selected_, true))
+                        notice("Nettoyage refusé",
+                               "Une demande acceptée par etaHEN et votre confirmation explicite "
+                               "sont nécessaires. Attendez la fin de l’opération en cours.",
+                               feedback);
+                }
+                else if (pending_install_)
                 {
                     pending_install_ = false;
                     if (!service_.install(selected_))
@@ -190,15 +208,13 @@ class Hub final : public app::Concept
                 else if (pending_download_)
                 {
                     pending_download_ = false;
-                    if (!service_.download(selected_))
-                        notice("Ajout refusé",
-                               "Ce contenu figure déjà dans Téléchargements, ou la file ne peut "
-                               "pas être enregistrée.",
-                               feedback);
+                    if (!service_.download(selected_, true))
+                        notice("Ajout refusé", service_.snapshot().message, feedback);
                 }
             }
             if (!dialog_.is_open())
-                pending_install_ = pending_download_ = false;
+                pending_install_ = pending_download_ = pending_cleanup_ = pending_alternative_ =
+                    false;
         }
         else if (detail_open_)
         {
@@ -209,26 +225,33 @@ class Hub final : public app::Concept
             else if (input.is_pressed(Action::north))
                 open_page(feedback);
             else if (input.is_pressed(Action::west))
-                confirm_install(selected_, feedback);
+            {
+                if (service_.downloaded(selected_))
+                    confirm_install(selected_, feedback);
+                else
+                    confirm_download_install(feedback);
+            }
             else if (input.is_pressed(Action::confirm))
             {
-                if (!hub::download_block_reason(selected_).empty())
-                    open_page(feedback);
-                else
+                const auto blocked = hub::download_block_reason(selected_);
+                if (!blocked.empty())
                 {
-                    pending_install_ = false;
-                    pending_download_ = true;
-                    dialog_.open({ui::StatusKind::none,
-                                  "Télécharger ce fichier ?",
-                                  selected_.title +
-                                      "\nSHA-256 obligatoire. Taille maximale : 250 Gio. Une "
-                                      "interruption peut être reprise. "
-                                      "Le fichier sera téléchargé, sans installation automatique.",
-                                  {{"Annuler", ui::ButtonKind::secondary, false},
-                                   {"Télécharger", ui::ButtonKind::primary, false}},
-                                  0},
-                                 feedback);
+                    pending_alternative_ = true;
+                    dialog_.open(
+                        {ui::StatusKind::none,
+                         "Téléchargement automatique indisponible",
+                         blocked +
+                             ". Cette fiche ne fournit pas de fichier direct autorisé avec "
+                             "SHA-256. Le Hub ne peut pas déduire un PKG depuis une publicité ou "
+                             "une vérification. Choisissez les fichiers téléchargeables du "
+                             "catalogue ; Triangle ouvre la source si vous souhaitez la consulter.",
+                         {{"Fermer", ui::ButtonKind::secondary, false},
+                          {"Téléchargeables", ui::ButtonKind::primary, false}},
+                         0},
+                        feedback);
                 }
+                else if (!service_.download(selected_))
+                    notice("Téléchargement non ajouté", service_.snapshot().message, feedback);
             }
         }
         else if (edit_step_ >= 0)
@@ -272,6 +295,13 @@ class Hub final : public app::Concept
         else if (input.is_pressed(Action::menu) && section_ <= 3 && !indices_.empty())
             toggle_favorite(snapshot_.entries[indices_[static_cast<std::size_t>(content_focus())]],
                             feedback);
+        else if (input.is_pressed(Action::north) && section_ == 4 && !sidebar_ &&
+                 !snapshot_.transfers.empty())
+        {
+            const auto i = static_cast<std::size_t>(items_.focus());
+            if (i < snapshot_.transfers.size())
+                notice("Diagnostic du téléchargement", snapshot_.transfers[i].message, feedback);
+        }
         else if (input.is_pressed(Action::west) && section_ == 4 && !sidebar_ &&
                  !snapshot_.transfers.empty())
         {
@@ -353,7 +383,7 @@ class Hub final : public app::Concept
         list.rounded_rect({96, 76, 60, 60}, 18, theme_.primary);
         ui::text(list, fonts.semibold, "H", 126, 119, 40, theme_.on_primary, gfx::Align::center);
         ui::text(list, fonts.semibold, "PS5 Hub", 176, 119, 38, theme_.text);
-        ui::text(list, fonts.regular, "CATALOGUE CONNECTÉ  /  0.5 ALPHA", 1824, 113, 20,
+        ui::text(list, fonts.regular, "CATALOGUE CONNECTÉ  /  0.6 ALPHA", 1824, 113, 20,
                  theme_.text_muted, gfx::Align::right);
         if (section_ == 0 && edit_step_ < 0 && !indices_.empty())
         {
@@ -416,7 +446,8 @@ class Hub final : public app::Concept
                          std::to_string(service_.bytes() / (1024 * 1024)) + " Mio / " +
                              (service_.total() ? std::to_string(service_.total() / (1024 * 1024))
                                                : "?") +
-                             " Mio · " + std::to_string(service_.speed() / 1024) + " Kio/s · " +
+                             " Mio · " + std::to_string(service_.speed() / 1000000) + "." +
+                             std::to_string((service_.speed() / 100000) % 10) + " Mo/s · " +
                              (service_.speed() && service_.total() >= service_.bytes()
                                   ? std::to_string((service_.total() - service_.bytes()) /
                                                    service_.speed()) +
@@ -433,7 +464,7 @@ class Hub final : public app::Concept
             }
         }
         ui::text(list, fonts.regular, "13.60", 110, 902, 26, theme_.text);
-        ui::text(list, fonts.regular, "0.5 non testée sur console", 110, 940, 22,
+        ui::text(list, fonts.regular, "0.6 non testée sur console", 110, 940, 22,
                  Color::rgb(0xf4c787));
         const ui::Hint hints[] = {{ui::Button::cross, edit_step_ >= 0 ? "Saisir" : "Ouvrir"},
                                   {ui::Button::circle, "Retour"},
@@ -446,8 +477,9 @@ class Hub final : public app::Concept
         {
             const ui::Hint file_hints[] = {{ui::Button::cross, "Pause / reprendre / installer"},
                                            {ui::Button::square, "Annuler le transfert"},
+                                           {ui::Button::triangle, "Diagnostic"},
                                            {ui::Button::circle, "Retour"}};
-            ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), file_hints, 3, 1824, true);
+            ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), file_hints, 4, 1824, true);
         }
         else if (!detail_open_)
             ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), hints,
@@ -456,7 +488,7 @@ class Hub final : public app::Concept
         {
             const ui::Hint detail_hints[] = {
                 {ui::Button::cross,
-                 !hub::download_block_reason(selected_).empty() ? "Ouvrir sur PS5" : "Télécharger"},
+                 !hub::download_block_reason(selected_).empty() ? "Conditions" : "Télécharger"},
                 {ui::Button::circle, "Fermer"},
                 {ui::Button::triangle, "Ouvrir sur PS5"},
                 {ui::Button::options, "Favori"}};
@@ -539,6 +571,51 @@ class Hub final : public app::Concept
                              : error,
                feedback);
     }
+    void confirm_download_install(app::Feedback &feedback)
+    {
+        const auto blocked = hub::download_block_reason(selected_);
+        if (!blocked.empty() || !snapshot_.installer_available ||
+            (selected_.kind != "pkg" && selected_.format != "PKG"))
+        {
+            notice("Télécharger et installer indisponible",
+                   blocked.empty() ? "Un PKG direct autorisé et etaHEN DPIv2 actif sont "
+                                     "nécessaires. Paramètres > Détecter etaHEN DPIv2."
+                                   : blocked,
+                   feedback);
+            return;
+        }
+        pending_install_ = pending_cleanup_ = pending_alternative_ = false;
+        pending_download_ = true;
+        dialog_.open(
+            {ui::StatusKind::none,
+             "Télécharger et installer ?",
+             selected_.title +
+                 "\nVous autorisez le téléchargement puis l’envoi du PKG vérifié à etaHEN. Le "
+                 "format, le SHA-256 et l’espace de staging seront revérifiés. Firmware minimum et "
+                 "espace final inconnus ; 13.60 non validé. Une demande acceptée ne garantit pas "
+                 "une installation terminée ni un jeu jouable. Après une erreur ou un redémarrage, "
+                 "l’envoi automatique est désactivé.",
+             {{"Annuler", ui::ButtonKind::secondary, false},
+              {"Télécharger et installer", ui::ButtonKind::primary, false}},
+             0},
+            feedback);
+    }
+    void confirm_cleanup(const hub::Entry &entry, app::Feedback &feedback)
+    {
+        selected_ = entry;
+        pending_install_ = pending_download_ = pending_alternative_ = false;
+        pending_cleanup_ = true;
+        dialog_.open({ui::StatusKind::none,
+                      "Installation réellement terminée ?",
+                      "Le Hub n’a pas d’API pour confirmer la fin de l’installation. Vérifiez la "
+                      "réussite dans les notifications système etaHEN avant de continuer. Cette "
+                      "action supprime uniquement le PKG et les copies partielles de ce contenu "
+                      "dans le Hub. Elle ne touche pas aux fichiers temporaires partagés d’etaHEN.",
+                      {{"Conserver les fichiers", ui::ButtonKind::secondary, false},
+                       {"Installation terminée : supprimer", ui::ButtonKind::primary, false}},
+                      0},
+                     feedback);
+    }
     void confirm_install(const hub::Entry &entry, app::Feedback &feedback)
     {
         if (!service_.downloaded(entry) || (entry.kind != "pkg" && entry.format != "PKG"))
@@ -615,8 +692,8 @@ class Hub final : public app::Concept
                       800, 716, 22, 665, 30, theme_.text_muted, 2);
         list.rounded_rect({800, 794, 630, 62}, 16, theme_.primary);
         ui::text(list, fonts.semibold,
-                 reference ? "Croix : voir la fiche sur PS5"
-                           : "Croix : ajouter aux téléchargements",
+                 reference ? "Croix : conditions et sources compatibles"
+                           : "Croix : télécharger directement",
                  826, 835, 24, theme_.on_primary);
         const auto label = favorites_.count(selected_.id) ? "Options : retirer des favoris"
                                                           : "Options : ajouter aux favoris";
@@ -628,17 +705,18 @@ class Hub final : public app::Concept
                       "Disponibilité sur 13.60 à tester.",
                       1514, 460, 21, 276, 31, theme_.text_muted, 6);
         if ((selected_.kind == "pkg" || selected_.format == "PKG") &&
-            service_.downloaded(selected_))
+            (service_.downloaded(selected_) || (!reference && snapshot_.installer_available)))
             ui::paragraph(list, fonts.semibold,
-                          snapshot_.installer_available ? "Carré : installer"
+                          snapshot_.installer_available ? (service_.downloaded(selected_)
+                                                               ? "Carré : installer"
+                                                               : "Carré : télécharger et installer")
                                                         : "Détectez etaHEN dans Paramètres",
                           1514, 725, 23, 276, 34, theme_.primary, 3);
         ui::text(list, fonts.regular, "Cercle : fermer la fiche", 500, 909, 22, theme_.text_muted);
     }
     void notice(std::string title, std::string body, app::Feedback &feedback)
     {
-        pending_download_ = false;
-        pending_install_ = false;
+        pending_download_ = pending_install_ = pending_cleanup_ = pending_alternative_ = false;
         dialog_.open({ui::StatusKind::none,
                       std::move(title),
                       std::move(body),
@@ -658,6 +736,8 @@ class Hub final : public app::Concept
             return "ÉCHEC · RÉESSAYER";
         if (state == "cancelled")
             return "ANNULÉ";
+        if (state == "cleaned")
+            return "FICHIERS SUPPRIMÉS";
         if (state == "complete")
             return "VÉRIFIÉ";
         if (state == "install_error")
@@ -800,7 +880,7 @@ class Hub final : public app::Concept
                                context_.settings.ui_volume ? "OUI" : "NON"));
             rows.push_back(row("Vérifier les mises à jour", "Version publiée de PS5 Hub", "HTTPS"));
             rows.push_back(row("Bot PC et transfert PKG",
-                               "Import en masse, jaquettes, FTP et HyperDPI", "0.5 ALPHA"));
+                               "Import en masse, jaquettes, FTP et HyperDPI", "0.6 ALPHA"));
             rows.push_back(row("Actualiser le catalogue partagé",
                                "Actualisation automatique toutes les 15 minutes", "HTTPS"));
             rows.push_back(row("État des sources", "Provenance et accès aux contenus",
@@ -883,7 +963,14 @@ class Hub final : public app::Concept
                 service_.pause(t.entry.id);
             else if (t.state == "complete" || t.state == "install_error")
                 confirm_install(t.entry, feedback);
-            else if (t.state == "accepted" || t.state == "unknown" || t.state == "installing")
+            else if (t.state == "cleaned")
+                notice("Fichiers déjà supprimés",
+                       "Le PKG du Hub a été supprimé après votre confirmation. Pour le télécharger "
+                       "à nouveau, ouvrez sa fiche dans le catalogue.",
+                       feedback);
+            else if (t.state == "accepted")
+                confirm_cleanup(t.entry, feedback);
+            else if (t.state == "unknown" || t.state == "installing")
                 notice(
                     "État de l’installation",
                     t.message +
@@ -969,6 +1056,7 @@ class Hub final : public app::Concept
     bool detail_open_ = false, sync_pending_ = false, probe_pending_ = false;
     int section_ = 0, edit_step_ = -1;
     bool sidebar_ = true, pending_download_ = false, pending_install_ = false;
+    bool pending_cleanup_ = false, pending_alternative_ = false;
     float clock_ = 0, sync_elapsed_ = 0;
 };
 } // namespace

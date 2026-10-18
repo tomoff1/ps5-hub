@@ -12,13 +12,14 @@
 
 namespace hub
 {
-inline constexpr char version[] = "00.005.000";
+inline constexpr char version[] = "00.006.000";
 inline constexpr char catalog_url[] =
     "https://ps5-hub-catalog.ps5-hub-catalog-service.workers.dev/api/native/catalog.tsv";
 struct Transfer
 {
     Entry entry;
     std::string state = "queued", message;
+    bool install_after = false;
 };
 struct Snapshot
 {
@@ -47,7 +48,8 @@ class Service
     bool poll(Snapshot &previous);
     bool load();
     bool add(Entry entry);
-    bool download(Entry entry);
+    bool download(Entry entry, bool install_after = false);
+    bool cleanup(Entry entry, bool installation_confirmed);
     bool check_update();
     bool probe_installation();
     bool install(Entry entry);
@@ -81,6 +83,9 @@ class Service
     }
 
   private:
+#ifdef HUB_TEST
+    friend struct ServiceTestAccess;
+#endif
     enum class Job
     {
         load,
@@ -90,13 +95,15 @@ class Service
         sync,
         covers,
         probe,
-        install
+        install,
+        cleanup
     };
     bool start(Job job, Entry entry = {});
     static void *run(void *self);
     void execute();
     void finish(std::string message);
     std::string persist_transfers();
+    void log_network(const std::string &diagnostic);
     void restore_transfers();
     std::string download_path(const Entry &entry) const;
     std::string transfer(const std::string &url, const std::string &path, const std::string &hash,

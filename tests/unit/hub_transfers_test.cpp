@@ -8,6 +8,23 @@
 #include <thread>
 #include <chrono>
 #include <unistd.h>
+namespace hub
+{
+// Only compiled by HUB_TEST: simulate a positive probe without opening sockets.
+struct ServiceTestAccess
+{
+    static void identify_installer(Service &service)
+    {
+        std::lock_guard lock(service.mutex_);
+        service.state_.installer_available = true;
+    }
+    static void complete_download(Service &service)
+    {
+        std::lock_guard lock(service.mutex_);
+        service.state_.transfers.front().state = "complete";
+    }
+};
+} // namespace hub
 namespace
 {
 hub::Entry entry(std::string id)
@@ -79,6 +96,122 @@ TEST_F(HubTransfers, RestartPreservesQueueWithoutStartingNetwork)
     ASSERT_EQ(restored.snapshot().transfers.size(), 1u);
     EXPECT_EQ(restored.snapshot().transfers[0].state, "paused");
     EXPECT_EQ(restored.snapshot().transfers[0].entry.sha256, std::string(64, 'a'));
+}
+TEST_F(HubTransfers, RetryFromDetailsRequeuesFailedTransferWithoutDuplicatingHistory)
+{
+    hub::Service service(root, root + "/assets");
+    ASSERT_TRUE(service.load());
+    wait(service);
+    ASSERT_TRUE(service.download(entry("one")));
+    service.pump();
+    wait(service);
+    ASSERT_EQ(service.snapshot().transfers[0].state, "failed");
+    auto refreshed = entry("one");
+    refreshed.url = "https://example.org/refreshed.pkg";
+    ASSERT_TRUE(service.download(refreshed));
+    ASSERT_EQ(service.snapshot().transfers.size(), 1u);
+    EXPECT_EQ(service.snapshot().transfers[0].state, "queued");
+    EXPECT_EQ(service.snapshot().transfers[0].entry.url, refreshed.url);
+}
+TEST_F(HubTransfers, CombinedDownloadRequiresIdentifiedInstaller)
+{
+    hub::Service service(root, root + "/assets");
+    ASSERT_TRUE(service.load());
+    wait(service);
+    EXPECT_FALSE(service.download(entry("one"), true));
+    EXPECT_TRUE(service.snapshot().transfers.empty());
+    EXPECT_TRUE(service.download(entry("one")));
+}
+TEST_F(HubTransfers, RestartNeverReplaysAutomaticInstallationConsent)
+{
+    ASSERT_TRUE(hui::save::ensure_directory(root + "/downloads"));
+    ASSERT_TRUE(hui::save::write_atomic(root + "/downloads/one.pkg", "fixture").empty());
+    ASSERT_TRUE(hui::save::write_atomic(root + "/transfers.tsv",
+                                        "#TRANSFER\tone\tcomplete\n#AUTO_INSTALL\tone\t1\n" +
+                                            hub::serialize({entry("one")}))
+                    .empty());
+    hub::Service service(root, root + "/assets");
+    ASSERT_TRUE(service.load());
+    wait(service);
+    ASSERT_EQ(service.snapshot().transfers.size(), 1u);
+    EXPECT_FALSE(service.snapshot().transfers[0].install_after);
+    service.pump();
+    EXPECT_FALSE(service.busy());
+    EXPECT_EQ(service.snapshot().transfers[0].state, "complete");
+}
+TEST_F(HubTransfers, CombinedDownloadFailureDoesNotStartInstallation)
+{
+    hub::Service service(root, root + "/assets");
+    ASSERT_TRUE(service.load());
+    wait(service);
+    hub::ServiceTestAccess::identify_installer(service);
+    ASSERT_TRUE(service.download(entry("one"), true));
+    EXPECT_TRUE(service.snapshot().transfers[0].install_after);
+    service.pump();
+    wait(service);
+    EXPECT_EQ(service.snapshot().transfers[0].state, "failed");
+    EXPECT_FALSE(service.snapshot().transfers[0].install_after);
+    service.pump();
+    EXPECT_FALSE(service.busy());
+}
+TEST_F(HubTransfers, CancellationRevokesCombinedModeConsent)
+{
+    hub::Service service(root, root + "/assets");
+    ASSERT_TRUE(service.load());
+    wait(service);
+    hub::ServiceTestAccess::identify_installer(service);
+    ASSERT_TRUE(service.download(entry("one"), true));
+    ASSERT_TRUE(service.remove("one"));
+    EXPECT_FALSE(service.snapshot().transfers[0].install_after);
+    ASSERT_TRUE(service.resume("one"));
+    EXPECT_FALSE(service.snapshot().transfers[0].install_after);
+}
+TEST_F(HubTransfers, SchedulerAttemptsCombinedInstallationOnceAfterCompletedDownload)
+{
+    hub::Service service(root, root + "/assets");
+    ASSERT_TRUE(service.load());
+    wait(service);
+    hub::ServiceTestAccess::identify_installer(service);
+    ASSERT_TRUE(service.download(entry("one"), true));
+    hub::ServiceTestAccess::complete_download(service);
+    service.pump();
+    wait(service);
+    // Missing local PKG fails inspection; no installer POST is sent in this unit test.
+    EXPECT_EQ(service.snapshot().transfers[0].state, "install_error");
+    EXPECT_FALSE(service.snapshot().transfers[0].install_after);
+    service.pump();
+    EXPECT_FALSE(service.busy());
+}
+TEST_F(HubTransfers, CleanupRequiresAcceptedRequestAndManualConfirmation)
+{
+    ASSERT_TRUE(hui::save::ensure_directory(root + "/downloads"));
+    for (const auto *name : {"one.pkg", "one.pkg.part", "one.pkg.resume", "other.pkg"})
+        ASSERT_TRUE(hui::save::write_atomic(root + "/downloads/" + name, "fixture").empty());
+    ASSERT_TRUE(hui::save::write_atomic(root + "/transfers.tsv", "#TRANSFER\tone\taccepted\n" +
+                                                                     hub::serialize({entry("one")}))
+                    .empty());
+    hub::Service service(root, root + "/assets");
+    ASSERT_TRUE(service.load());
+    wait(service);
+    EXPECT_FALSE(service.cleanup(entry("one"), false));
+    EXPECT_FALSE(service.cleanup(entry("other"), true));
+    ASSERT_TRUE(service.cleanup(entry("one"), true));
+    wait(service);
+    EXPECT_FALSE(std::filesystem::exists(root + "/downloads/one.pkg"));
+    EXPECT_FALSE(std::filesystem::exists(root + "/downloads/one.pkg.part"));
+    EXPECT_FALSE(std::filesystem::exists(root + "/downloads/one.pkg.resume"));
+    EXPECT_TRUE(std::filesystem::exists(root + "/downloads/other.pkg"));
+    EXPECT_EQ(service.snapshot().transfers[0].state, "cleaned");
+}
+TEST_F(HubTransfers, CleanupRefusesUnknownInstallationState)
+{
+    ASSERT_TRUE(hui::save::write_atomic(root + "/transfers.tsv", "#TRANSFER\tone\tunknown\n" +
+                                                                     hub::serialize({entry("one")}))
+                    .empty());
+    hub::Service service(root, root + "/assets");
+    ASSERT_TRUE(service.load());
+    wait(service);
+    EXPECT_FALSE(service.cleanup(entry("one"), true));
 }
 TEST_F(HubTransfers, CancellationDiscardsOnlyOwnedPartialAndKeepsFinal)
 {
@@ -188,4 +321,20 @@ TEST(HubBrowser, RejectsNonHttpsAndDoesNotSimulateSuccessOnHost)
 {
     EXPECT_FALSE(hub::open_system_browser("file:///etc/passwd").empty());
     EXPECT_FALSE(hub::open_system_browser("https://example.org/").empty());
+}
+
+TEST_F(HubTransfers, StorageDisappearingAfterQueueDoesNotLeaveTransferStuck)
+{
+    hub::Service service(root, root + "/assets");
+    ASSERT_TRUE(service.load());
+    wait(service);
+    hub::ServiceTestAccess::identify_installer(service);
+    ASSERT_TRUE(service.download(entry("one"), true));
+    ASSERT_TRUE(std::filesystem::remove(root + "/downloads"));
+    ASSERT_TRUE(hui::save::write_atomic(root + "/downloads", "not a directory").empty());
+    service.pump();
+    wait(service);
+    EXPECT_EQ(service.snapshot().transfers[0].state, "failed");
+    EXPECT_FALSE(service.snapshot().transfers[0].install_after);
+    EXPECT_NE(service.snapshot().transfers[0].message.find("Stockage"), std::string::npos);
 }

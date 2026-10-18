@@ -1,6 +1,6 @@
 # Compatibilité et protocole de test — firmware 13.60
 
-Retour utilisateur du 17 octobre 2026 : **l’alpha 0.1 apparaît sur l’accueil et démarre sur sa configuration déclarée PS5 13.60**, avec photos fournies dans le chat. Les photos personnelles ne sont pas redistribuées dans le dépôt. Ce retour ne valide pas toutes les fonctions, ni l’alpha 0.5.
+Retour utilisateur du 17 octobre 2026 : **l’alpha 0.1 apparaît sur l’accueil et démarre sur sa configuration déclarée PS5 13.60**, avec photos fournies dans le chat. Les photos personnelles ne sont pas redistribuées dans le dépôt. Ce retour ne valide pas toutes les fonctions, ni l’alpha 0.6.
 
 | Élément | État |
 |---|---|
@@ -9,7 +9,7 @@ Retour utilisateur du 17 octobre 2026 : **l’alpha 0.1 apparaît sur l’accuei
 | ShadowMountPlus | Version exacte inconnue |
 | FTP 2121 | Sondage TCP du 18/10 : aucune réponse ; aucun transfert effectué |
 | Enregistrement du titre | Signalé sur l’alpha 0.1 ; icône personnalisée non confirmée |
-| Lancement et rendu OpenGL | Signalés sur l’alpha 0.1 ; alpha 0.5 à tester |
+| Lancement et rendu OpenGL | Signalés sur l’alpha 0.1 ; alpha 0.6 à tester |
 | DualSense, son, cadence et fermeture | À tester |
 | HTTPS et stockage dans le sandbox | À tester |
 | Installation de PKG depuis le hub | Connecteur DPIv2 compilé ; simulateur local, validation console à effectuer |
@@ -57,3 +57,7 @@ La validation ne doit être ajoutée au README qu’avec ce compte rendu et l’
 - Avec un petit fichier autorisé, tester file, pause, reprise réseau, annulation, fermeture et reprise manuelle au redémarrage. Mesurer le quota `/download0` réel.
 - Activer DPIv2 dans etaHEN ; vérifier la détection 12800. Un service accessible sur 9090 n’est pas identifié par ce seul fait. Tester un petit PKG homebrew autorisé, vérifier SHA-256 et espace de staging ; relever la réponse DPIv2 et les notifications système. Une demande acceptée ne valide ni la fin d’installation ni le lancement.
 - Noter séparément : navigateur ouvert / fichier vérifié / demande acceptée / installation terminée / application lançable. Ni les signatures, ni le firmware requis, ni la jouabilité ne sont validés par l’inspection CNT/FIH.
+
+## Compléments 0.6
+
+Tester X sur une référence PSPKG : un diagnostic doit apparaître sans navigateur. Tester une petite URL directe autorisée : X doit créer le transfert, sans publicité. Vérifier les erreurs HTTP et le journal network.log ; ne publier ni transfers.tsv ni personal.tsv. Tester le mode combiné avec un petit PKG autorisé et DPIv2 identifié. La fin d’installation reste à contrôler dans le système ; le nettoyage du Hub exige une confirmation manuelle. Le firmware minimum d’un paquet, l’espace final décompressé et la jouabilité ne sont pas déduits du contrôle CNT/FIH.

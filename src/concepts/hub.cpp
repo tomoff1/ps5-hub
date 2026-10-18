@@ -114,7 +114,8 @@ class Hub final : public app::Concept
             while (start < saved.size() && favorites_.size() < 5000)
             {
                 auto end = saved.find('\n', start);
-                auto id = saved.substr(start, end == saved.npos ? saved.size() - start : end - start);
+                auto id =
+                    saved.substr(start, end == saved.npos ? saved.size() - start : end - start);
                 if (!id.empty() && id.size() <= 64)
                     favorites_.insert(id);
                 if (end == saved.npos)
@@ -155,6 +156,12 @@ class Hub final : public app::Concept
             upload_images();
             refresh();
         }
+        sync_elapsed_ += dt;
+        if (sync_elapsed_ >= 900.0f)
+        {
+            sync_pending_ = true;
+            sync_elapsed_ = 0;
+        }
         if (sync_pending_ && !snapshot_.busy)
         {
             sync_pending_ = false;
@@ -176,17 +183,27 @@ class Hub final : public app::Concept
                 toggle_favorite(selected_, feedback);
             else if (input.is_pressed(Action::confirm))
             {
-                if (hub::is_reference(selected_))
-                    notice("Ouvrir sur votre téléphone", "Scannez le QR de la fiche pour consulter le projet et ses instructions.", feedback);
+                if (!hub::download_block_reason(selected_).empty())
+                    notice("Accès au contenu",
+                           hub::download_block_reason(selected_) +
+                               ". Le QR permet de consulter la source.",
+                           feedback);
                 else if (snapshot_.busy)
-                    notice("Opération en cours", "Attendez ou annulez avec Carré après avoir fermé la fiche.", feedback);
+                    notice("Opération en cours",
+                           "Attendez ou annulez avec Carré après avoir fermé la fiche.", feedback);
                 else
                 {
                     pending_download_ = true;
-                    dialog_.open({ui::StatusKind::none, "Télécharger cette archive ?",
-                        selected_.title + "\nVérification SHA-256 obligatoire. Limite : 2 Gio. "
-                        "Le fichier sera téléchargé, sans installation automatique.",
-                        {{"Annuler", ui::ButtonKind::secondary, false}, {"Télécharger", ui::ButtonKind::primary, false}}, 0}, feedback);
+                    dialog_.open({ui::StatusKind::none,
+                                  "Télécharger ce fichier ?",
+                                  selected_.title +
+                                      "\nSHA-256 obligatoire. Taille maximale : 250 Gio. Une "
+                                      "interruption peut être reprise. "
+                                      "Le fichier sera téléchargé, sans installation automatique.",
+                                  {{"Annuler", ui::ButtonKind::secondary, false},
+                                   {"Télécharger", ui::ButtonKind::primary, false}},
+                                  0},
+                                 feedback);
                 }
             }
         }
@@ -223,13 +240,14 @@ class Hub final : public app::Concept
         }
         else if (input.is_pressed(Action::page_next) && section_ <= 3)
         {
-            filter_ = (filter_ + 1) % 3;
+            filter_ = (filter_ + 1) % 5;
             grid_.set_focus(0);
             cover_key_.clear();
             refresh();
         }
         else if (input.is_pressed(Action::menu) && section_ <= 3 && !indices_.empty())
-            toggle_favorite(snapshot_.entries[indices_[static_cast<std::size_t>(content_focus())]], feedback);
+            toggle_favorite(snapshot_.entries[indices_[static_cast<std::size_t>(content_focus())]],
+                            feedback);
         else if (input.is_pressed(Action::west))
         {
             if (snapshot_.busy)
@@ -298,26 +316,34 @@ class Hub final : public app::Concept
         list.rounded_rect({96, 76, 60, 60}, 18, theme_.primary);
         ui::text(list, fonts.semibold, "H", 126, 119, 40, theme_.on_primary, gfx::Align::center);
         ui::text(list, fonts.semibold, "PS5 Hub", 176, 119, 38, theme_.text);
-        ui::text(list, fonts.regular, "COMMUNAUTÉ  /  0.3 ALPHA", 1824, 113, 20,
+        ui::text(list, fonts.regular, "CATALOGUE CONNECTÉ  /  0.4 ALPHA", 1824, 113, 20,
                  theme_.text_muted, gfx::Align::right);
         if (section_ == 0 && edit_step_ < 0 && !indices_.empty())
         {
-            const auto &featured = snapshot_.entries[indices_[static_cast<std::size_t>(content_focus())]];
+            const auto &featured =
+                snapshot_.entries[indices_[static_cast<std::size_t>(content_focus())]];
             list.rounded_rect({472, 210, 1352, 250}, 24, Color::rgb(0x142b3d));
             auto texture = textures_.find(featured.id);
             if (texture != textures_.end())
-                list.image(texture->second, {1554, 210, 168, 250}, gfx::kFullUv, Color::rgb(0xffffff), 16);
-            ui::text(list, fonts.semibold, "À DÉCOUVRIR  /  NATIF PS5", 510, 261, 18, theme_.primary);
-            ui::text(list, fonts.display, fonts.display.font->fit(featured.title, 46, 990), 510, 327, 46, theme_.text);
-            ui::text(list, fonts.regular, "Jeux et portages de la communauté, liens des développeurs.", 512, 376, 23, theme_.text_muted);
+                list.image(texture->second, {1554, 210, 168, 250}, gfx::kFullUv,
+                           Color::rgb(0xffffff), 16);
+            ui::text(list, fonts.semibold, "À DÉCOUVRIR  /  PS4 · PS5", 510, 261, 18,
+                     theme_.primary);
+            ui::text(list, fonts.display, fonts.display.font->fit(featured.title, 46, 990), 510,
+                     327, 46, theme_.text);
+            ui::text(list, fonts.regular, "Catalogues identifiés, jaquettes et contenus autorisés.",
+                     512, 376, 23, theme_.text_muted);
             ui::text(list, fonts.semibold, "Croix : voir la fiche", 512, 427, 22, theme_.primary);
         }
         else
         {
             list.rounded_rect({472, 230, 1352, 170}, 24, Color::rgb(0x172c3f, 0.85f));
             ui::text(list, fonts.display, sections[section_], 504, 301, 54, theme_.text);
-            const auto subtitle = section_ <= 3 ? (query_.empty() ? std::string(subtitles[section_]) : "Recherche : " + query_) : std::string(subtitles[section_]);
-            ui::text(list, fonts.regular, fonts.regular.font->fit(subtitle, 24, 1220), 506, 354, 24, theme_.text_muted);
+            const auto subtitle = section_ <= 3 ? (query_.empty() ? std::string(subtitles[section_])
+                                                                  : "Recherche : " + query_)
+                                                : std::string(subtitles[section_]);
+            ui::text(list, fonts.regular, fonts.regular.font->fit(subtitle, 24, 1220), 506, 354, 24,
+                     theme_.text_muted);
         }
         ui::text(list, fonts.semibold, "VOTRE ESPACE", 110, 235, 18, theme_.text_muted);
         ui::Canvas canvas{list, fonts, 0, clock_};
@@ -325,7 +351,8 @@ class Hub final : public app::Concept
         if (edit_step_ >= 0)
         {
             const char *labels[] = {"1 / 3 — Nom du contenu", "2 / 3 — Lien HTTPS direct",
-                                    "3 / 3 — SHA-256 de l’auteur (optionnel)", "Rechercher dans les titres et les fiches"};
+                                    "3 / 3 — SHA-256 de l’auteur (optionnel)",
+                                    "Rechercher dans les titres et les fiches"};
             ui::text(list, fonts.semibold, labels[edit_step_], 504, 430, 28, theme_.text);
             keys_.draw(canvas);
             const auto shown = fonts.regular.font->fit(edit_, 25, 1256);
@@ -337,8 +364,10 @@ class Hub final : public app::Concept
         {
             if (is_grid())
             {
-                const char *filters[] = {"Tous", "Favoris", "Archives"};
-                ui::text(list, fonts.semibold, std::to_string(indices_.size()) + " résultats  ·  " + filters[filter_], 510, section_ == 0 ? 491 : 426, 19, theme_.text_muted);
+                const char *filters[] = {"Tous", "Favoris", "Téléchargeables", "PS4", "PS5"};
+                ui::text(list, fonts.semibold,
+                         std::to_string(indices_.size()) + " résultats  ·  " + filters[filter_],
+                         510, section_ == 0 ? 491 : 426, 19, theme_.text_muted);
                 grid_.draw(canvas);
             }
             else
@@ -346,30 +375,36 @@ class Hub final : public app::Concept
             const auto message = fonts.regular.font->fit(snapshot_.message, 23, 1280);
             ui::text(list, fonts.regular, message, 504, 900, 23, theme_.primary);
             if (snapshot_.busy && service_.bytes() > 0)
-                ui::text(list, fonts.mono, std::to_string(service_.bytes() / 1024) + " Kio reçus",
+                ui::text(list, fonts.mono,
+                         std::to_string(service_.bytes() / (1024 * 1024)) + " Mio / " +
+                             (service_.total() ? std::to_string(service_.total() / (1024 * 1024))
+                                               : "?") +
+                             " Mio · " + std::to_string(service_.speed() / 1024) + " Kio/s",
                          504, 940, 22, theme_.text_muted);
         }
         ui::text(list, fonts.regular, "13.60", 110, 902, 26, theme_.text);
         ui::text(list, fonts.regular, "Démarrage signalé · 13.60", 110, 940, 22,
                  Color::rgb(0xf4c787));
-        const ui::Hint hints[] = {
-            {ui::Button::cross, edit_step_ >= 0 ? "Saisir" : "Ouvrir"},
-            {ui::Button::circle, "Retour"},
-            {ui::Button::triangle, edit_step_ >= 0 ? "Espace" : "Ajouter"},
-            {ui::Button::square, edit_step_ >= 0  ? "Effacer"
-                                 : snapshot_.busy ? "Annuler"
-                                                  : "Actualiser"}};
+        const ui::Hint hints[] = {{ui::Button::cross, edit_step_ >= 0 ? "Saisir" : "Ouvrir"},
+                                  {ui::Button::circle, "Retour"},
+                                  {ui::Button::triangle, edit_step_ >= 0 ? "Espace" : "Ajouter"},
+                                  {ui::Button::square, edit_step_ >= 0  ? "Effacer"
+                                                       : snapshot_.busy ? "Annuler"
+                                                                        : "Actualiser"}};
         if (!detail_open_)
             ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), hints,
                            (edit_step_ >= 0 || section_ <= 3) ? 4 : 2, 1824, true);
         else
         {
-            const ui::Hint detail_hints[] = {{ui::Button::cross, hub::is_reference(selected_) ? "Projet" : "Télécharger"},
-                {ui::Button::circle, "Fermer"}, {ui::Button::options, "Favori"}};
+            const ui::Hint detail_hints[] = {
+                {ui::Button::cross, hub::is_reference(selected_) ? "Projet" : "Télécharger"},
+                {ui::Button::circle, "Fermer"},
+                {ui::Button::options, "Favori"}};
             ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), detail_hints, 3, 1824, true);
         }
         if (edit_step_ < 0 && section_ <= 3 && !detail_open_)
-            ui::text(list, fonts.regular, "L1 Rechercher   R1 Filtrer   Options Favori", 504, 963, 20, theme_.text_muted);
+            ui::text(list, fonts.regular, "L1 Rechercher   R1 Filtrer   Options Favori", 504, 963,
+                     20, theme_.text_muted);
         if (detail_open_)
             draw_detail(list, fonts);
         frame.glass = dialog_.visible();
@@ -389,6 +424,13 @@ class Hub final : public app::Concept
             {0.8f, 0, Direction::none, "confirmation"},
             {0.2f, action_bit(Action::back), Direction::none, nullptr},
             {0.2f, action_bit(Action::back), Direction::none, nullptr},
+            {0.2f, action_bit(Action::page_next), Direction::none, nullptr},
+            {0.2f, action_bit(Action::page_next), Direction::none, nullptr},
+            {0.2f, action_bit(Action::page_next), Direction::none, nullptr},
+            {0.8f, 0, Direction::none, "catalogue-ps4"},
+            {0.2f, action_bit(Action::page_next), Direction::none, nullptr},
+            {0.8f, 0, Direction::none, "catalogue-ps5"},
+            {0.2f, action_bit(Action::page_next), Direction::none, nullptr},
             {0.2f, action_bit(Action::page_prev), Direction::none, nullptr},
             {0.8f, 0, Direction::none, "recherche"},
             {0.2f, action_bit(Action::back), Direction::none, nullptr},
@@ -409,6 +451,8 @@ class Hub final : public app::Concept
   private:
     std::string project_page(const hub::Entry &entry) const
     {
+        if (!entry.page_url.empty())
+            return entry.page_url;
         if (entry.url.starts_with("https://github.com/"))
         {
             const auto owner = entry.url.find('/', 19);
@@ -425,8 +469,9 @@ class Hub final : public app::Concept
         selected_ = entry;
         detail_open_ = true;
         std::uint8_t scratch[qrcodegen_BUFFER_LEN_MAX], code[qrcodegen_BUFFER_LEN_MAX];
-        if (!qrcodegen_encodeText(project_page(entry).c_str(), scratch, code,
-            qrcodegen_Ecc_LOW, qrcodegen_VERSION_MIN, qrcodegen_VERSION_MAX, qrcodegen_Mask_AUTO, true))
+        if (!qrcodegen_encodeText(project_page(entry).c_str(), scratch, code, qrcodegen_Ecc_LOW,
+                                  qrcodegen_VERSION_MIN, qrcodegen_VERSION_MAX, qrcodegen_Mask_AUTO,
+                                  true))
         {
             qr_size_ = 0;
             qr_.clear();
@@ -460,20 +505,33 @@ class Hub final : public app::Concept
     void draw_detail(gfx::DrawList &list, const ui::Fonts &fonts) const
     {
         list.rounded_rect({450, 190, 1390, 770}, 28, Color::rgb(0x101c2d));
-        list.gradient_rect_h({450, 190, 1390, 770}, 28, Color::rgb(0x15323f, 0.55f), Color::rgb(0x101624, 0.2f));
+        list.gradient_rect_h({450, 190, 1390, 770}, 28, Color::rgb(0x15323f, 0.55f),
+                             Color::rgb(0x101624, 0.2f));
         auto texture = textures_.find(selected_.id);
         if (texture != textures_.end())
-            list.image(texture->second, {500, 280, 256, 384}, gfx::kFullUv, Color::rgb(0xffffff), 18);
-        ui::text(list, fonts.semibold, hub::is_game(selected_) ? "JEU / PORTAGE PS5" : "APPLICATION PS5", 800, 260, 19, theme_.primary);
+            list.image(texture->second, {500, 280, 256, 384}, gfx::kFullUv, Color::rgb(0xffffff),
+                       18);
+        ui::text(list, fonts.semibold, selected_.platform + "  /  " + selected_.source, 800, 260,
+                 19, theme_.primary);
         ui::paragraph(list, fonts.display, selected_.title, 800, 320, 39, 665, 48, theme_.text, 2);
-        ui::paragraph(list, fonts.regular, selected_.description, 800, 437, 24, 665, 34, theme_.text_muted, 6);
-        const bool reference = hub::is_reference(selected_);
-        ui::text(list, fonts.semibold, reference ? "FICHE DE RÉFÉRENCE" : "ARCHIVE · EMPREINTE SHA-256 FOURNIE", 800, 677, 19, theme_.primary);
-        ui::paragraph(list, fonts.regular, reference ? "Consultez le projet sur votre téléphone." :
-            "Archive du développeur. Installation manuelle ; limite de téléchargement : 2 Gio.", 800, 716, 22, 665, 30, theme_.text_muted, 2);
+        ui::paragraph(list, fonts.regular, selected_.description, 800, 437, 24, 665, 34,
+                      theme_.text_muted, 6);
+        const bool reference = !hub::download_block_reason(selected_).empty();
+        ui::text(list, fonts.semibold,
+                 reference ? "RÉFÉRENCE · ACCÈS NON DIRECT" : "FICHIER · SHA-256 FOURNI", 800, 677,
+                 19, theme_.primary);
+        ui::paragraph(list, fonts.regular,
+                      reference ? hub::download_block_reason(selected_)
+                                : "Téléchargement vérifié avec reprise. Installation manuelle ; "
+                                  "jusqu’à 250 Gio selon l’espace libre.",
+                      800, 716, 22, 665, 30, theme_.text_muted, 2);
         list.rounded_rect({800, 794, 630, 62}, 16, theme_.primary);
-        ui::text(list, fonts.semibold, reference ? "Scannez le QR pour consulter le projet" : "Croix : télécharger l’archive", 826, 835, 24, theme_.on_primary);
-        const auto label = favorites_.count(selected_.id) ? "Options : retirer des favoris" : "Options : ajouter aux favoris";
+        ui::text(list, fonts.semibold,
+                 reference ? "Scannez le QR pour consulter le projet"
+                           : "Croix : télécharger le fichier",
+                 826, 835, 24, theme_.on_primary);
+        const auto label = favorites_.count(selected_.id) ? "Options : retirer des favoris"
+                                                          : "Options : ajouter aux favoris";
         ui::text(list, fonts.regular, label, 800, 902, 22, theme_.text_muted);
         if (qr_size_ > 0)
         {
@@ -484,8 +542,11 @@ class Hub final : public app::Concept
             for (int y = 0; y < qr_size_; ++y)
                 for (int x = 0; x < qr_size_; ++x)
                     if (qr_[static_cast<std::size_t>(y * qr_size_ + x)])
-                        list.rounded_rect({left + (x + 4) * module, 320 + (y + 4) * module, module, module}, 0, Color::rgb(0x000000));
-            ui::paragraph(list, fonts.regular, "Scannez avec votre téléphone\nPage du développeur", 1514, 620, 21, 276, 31, theme_.text_muted, 3);
+                        list.rounded_rect(
+                            {left + (x + 4) * module, 320 + (y + 4) * module, module, module}, 0,
+                            Color::rgb(0x000000));
+            ui::paragraph(list, fonts.regular, "Scannez avec votre téléphone\nPage de la source",
+                          1514, 620, 21, 276, 31, theme_.text_muted, 3);
         }
         ui::text(list, fonts.regular, "Cercle : fermer la fiche", 500, 909, 22, theme_.text_muted);
     }
@@ -581,20 +642,29 @@ class Hub final : public app::Concept
             for (std::size_t i = 0; i < snapshot_.entries.size(); ++i)
             {
                 const auto &entry = snapshot_.entries[i];
-                const bool visible = section_ <= 1 ? hub::is_game(entry)
+                const bool visible = section_ <= 1   ? hub::is_game(entry)
                                      : section_ == 2 ? !hub::is_game(entry)
                                                      : entry.kind == "homebrew";
                 if (!visible || !hub::matches(entry, query_) ||
                     (filter_ == 1 && !favorites_.count(entry.id)) ||
-                    (filter_ == 2 && (hub::is_reference(entry) || entry.sha256.empty())))
+                    (filter_ == 2 && !hub::download_block_reason(entry).empty()) ||
+                    (filter_ == 3 && entry.platform != "PS4") ||
+                    (filter_ == 4 && entry.platform != "PS5"))
                     continue;
                 auto image = textures_.count(entry.id)
                                  ? entry.id
                                  : (section_ == 1 ? "hub-feature" : "hub-homebrew");
-                cards.push_back(card(entry.title,
-                                     favorites_.count(entry.id) ? "Dans vos favoris" : entry.description,
-                                     entry.kind == "pkg" ? "PKG PERSONNEL" : hub::is_reference(entry) ? "PROJET" : "ARCHIVE",
-                                     image));
+                cards.push_back(card(
+                    entry.title,
+                    entry.source + " · " +
+                        (entry.platform == "UNKNOWN" ? "Plateforme à vérifier" : entry.platform) +
+                        (favorites_.count(entry.id) ? " · Favori" : ""),
+                    entry.access == "verification"                 ? "VÉRIFICATION"
+                    : entry.access == "authentication"             ? "CONNEXION"
+                    : hub::is_reference(entry)                     ? "RÉFÉRENCE"
+                    : entry.format == "PKG" || entry.kind == "pkg" ? "PKG"
+                                                                   : "ARCHIVE",
+                    image));
                 indices_.push_back(i);
             }
             if (cards.empty())
@@ -617,14 +687,18 @@ class Hub final : public app::Concept
                                context_.settings.ui_volume ? "OUI" : "NON"));
             rows.push_back(row("Vérifier les mises à jour", "Version publiée de PS5 Hub", "HTTPS"));
             rows.push_back(row("Bot PC et transfert PKG",
-                               "Import en masse, jaquettes, FTP et HyperDPI", "0.3 ALPHA"));
-            rows.push_back(row("Actualiser le catalogue partagé", "Conserve vos imports et vos favoris", "HTTPS"));
+                               "Import en masse, jaquettes, FTP et HyperDPI", "0.4 ALPHA"));
+            rows.push_back(row("Actualiser le catalogue partagé",
+                               "Actualisation automatique toutes les 15 minutes", "HTTPS"));
+            rows.push_back(row("État des sources", "Provenance et accès aux contenus",
+                               std::to_string(snapshot_.sources.size())));
         }
         const int focus = content_focus();
         items_.set_items(std::move(rows));
         items_.set_focus(focus);
         grid_.set_items(std::move(cards));
-        grid_.set_bounds(section_ == 0 ? gfx::Rect{504, 500, 1320, 385} : gfx::Rect{504, 450, 1320, 420});
+        grid_.set_bounds(section_ == 0 ? gfx::Rect{504, 500, 1320, 385}
+                                       : gfx::Rect{504, 450, 1320, 420});
         grid_.set_focus(focus);
     }
     void activate(app::Feedback &feedback)
@@ -656,6 +730,16 @@ class Hub final : public app::Concept
             case 4:
                 service_.sync_catalog();
                 break;
+            case 5:
+            {
+                std::string status;
+                for (const auto &source : snapshot_.sources)
+                    status += source.name + " : " + source.message + "\n";
+                notice("Sources du catalogue",
+                       status.empty() ? "Aucun état de source disponible hors ligne." : status,
+                       feedback);
+                break;
+            }
             default:
                 notice("PS5 Hub — version alpha",
                        "GPL-3.0-or-later. Base BlackBearReloaded. Firmware 13.60, HyperHEN, "
@@ -748,7 +832,7 @@ class Hub final : public app::Concept
     bool detail_open_ = false, sync_pending_ = false;
     int section_ = 0, edit_step_ = -1;
     bool sidebar_ = true, pending_download_ = false;
-    float clock_ = 0;
+    float clock_ = 0, sync_elapsed_ = 0;
 };
 } // namespace
 std::unique_ptr<app::Concept> make_hub(app::Context &c)

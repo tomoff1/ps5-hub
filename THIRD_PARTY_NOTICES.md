@@ -217,3 +217,13 @@ original upstream gallery uses invented covers. PS5 Hub 0.3's actual public
 catalog uses the attributed developer icons described above.
 
 No proprietary runtime module, encryption key, or game file is included.
+
+### Native image codecs and public source metadata (0.4)
+
+The image worker also links PacBrew libwebp, libpng and libjpeg. Their upstream
+licence and copyright notices are included in the bundled PacBrew notices.
+Only the existing community icons and original Hub illustrations are bundled.
+PSPKG records contain factual titles, public page identifiers, platform labels
+and cover URL references. Cover images are fetched on demand, not included in
+the repository or installation archive. These metadata records grant no right
+to redistribute any commercial game, package or artwork.

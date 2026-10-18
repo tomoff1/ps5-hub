@@ -1,3 +1,5 @@
+> Protocole du client 0.3. Pour le catalogue Cloudflare et les sources PS4/PS5 du client 0.4, voir [le guide Cloudflare](CLOUDFLARE_FR.md).
+
 # Catalogue et interface 0.3
 
 La version 0.3 fournit 90 projets publiés dans le catalogue communautaire PS5, dont 31 jeux ou portages, ainsi que deux références de développement conservées. Le catalogue est disponible dès le premier lancement, avec 90 icônes des développeurs. Les utilisateurs n'ont pas besoin de préparer une liste pour voir ces projets. **Il ne contient pas le catalogue commercial de PSPKG.**

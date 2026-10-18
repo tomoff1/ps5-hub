@@ -68,6 +68,6 @@ export function validateSource(value) {
 export const DEFAULT_SOURCES = [
   {id:'community',name:'Communauté PS5',connector:'tsv',enabled:true,url:'https://raw.githubusercontent.com/tomoff1/ps5-hub/main/shared/catalog.tsv',
     allowed_hosts:['raw.githubusercontent.com'],permission_url:'https://github.com/blackbearreloaded/ps5-homebrew-catalog/blob/main/LICENSE'},
-  {id:'pspkg',name:'PSPKG',connector:'pspkg',enabled:true,url:'https://pspkg.com/',allowed_hosts:['pspkg.com','img.pspkg.com'],
+  {id:'pspkg',name:'PSPKG',connector:'pspkg',enabled:true,url:'https://pspkg.com/',allowed_hosts:['pspkg.com','img.pspkg.com','image.api.playstation.com'],
     policy:'public-metadata-only',permission_url:'https://pspkg.com/robots.txt'}
 ];

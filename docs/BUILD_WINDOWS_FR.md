@@ -10,7 +10,7 @@ Dans Ubuntu :
 
 ```bash
 sudo apt update
-sudo apt install -y clang-18 lld-18 clang-format-18 clang-tidy-18 make ninja-build ccache pkg-config git curl wget unzip python3 python3-venv libegl-dev libgl-dev libgl1-mesa-dri libcurl4-openssl-dev
+sudo apt install -y clang-18 lld-18 clang-format-18 clang-tidy-18 make ninja-build ccache pkg-config git curl wget unzip python3 python3-venv libegl-dev libgl-dev libgl1-mesa-dri libcurl4-openssl-dev libssl-dev libwebp-dev libpng-dev libjpeg-dev
 git clone https://github.com/tomoff1/ps5-hub.git
 cd ps5-hub
 bash tools/hub-build.sh
@@ -58,8 +58,8 @@ dist/PPSA99841/
   sce_sys/icon0.png
   sce_module/libc.prx
   assets/...
-dist/PS5-Hub-00.003.000-experimental.zip
-dist/PS5-Hub-00.003.000-experimental.zip.sha256
+dist/PS5-Hub-00.004.000-experimental.zip
+dist/PS5-Hub-00.004.000-experimental.zip.sha256
 ```
 
 Le dossier contient aussi les modules et fichiers produits par le kit. Conservez-les tous. Un contrôle FSELF, la présence des fichiers et l’empreinte du ZIP sont vérifiés par `tools/hub-package.py`. Cela confirme le format du paquet, pas son exécution sur PS5.
@@ -85,6 +85,6 @@ Le fichier `assets/catalog.tsv` contient sept colonnes séparées par des tabula
 id  titre  version  type  url  sha256  description
 ```
 
-Types : `link` pour une fiche de projet, `homebrew` pour une archive ZIP, `pkg` pour un paquet. Les identifiants sont composés de lettres minuscules, chiffres et tirets ; les URL sont HTTPS ; le SHA-256 est en hexadécimal minuscule. Le catalogue importé du bot accepte 5000 fiches et 4 Mio ; l’ajout manuel reste limité à 500 fiches. Une erreur de lecture ou de validation ne remplace pas le catalogue par des données partielles.
+Types : `link` pour une fiche de projet, `homebrew` pour une archive ZIP, `pkg` pour un paquet. Les identifiants sont composés de lettres minuscules, chiffres et tirets ; les URL sont HTTPS ; le SHA-256 est en hexadécimal minuscule. Le client accepte les flux historiques à sept colonnes et les flux v2 à dix-huit colonnes. Le catalogue accepte 10000 fiches et 16 Mio ; l’ajout manuel reste limité à 500 fiches. Une erreur de lecture ou de validation ne remplace pas le catalogue par des données partielles.
 
 Le catalogue personnel est enregistré sur le titre par le clavier DualSense. Il n’est jamais ajouté à GitHub automatiquement. La vérification de mise à jour lit uniquement `release-version.txt` dans le dépôt officiel PS5 Hub ; elle ne télécharge ni n’installe automatiquement une mise à jour.

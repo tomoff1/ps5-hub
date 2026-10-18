@@ -2,9 +2,9 @@
 
 Le dossier `server` contient un Worker et un tableau de bord en français. Il
 publie des métadonnées, jamais les fichiers PKG eux-mêmes. Cette étape est
-indépendante de la compilation PS5 : le client natif 00.003.000 continue de lire
-son ancien flux GitHub à sept colonnes. Le raccordement du client au nouveau
-flux à dix-huit colonnes fait partie de la prochaine version native.
+indépendante du remplacement de l’exécutable : le client 00.004.000 lit ce flux
+à dix-huit colonnes ; les anciens clients 00.003.000 restent sur le flux GitHub
+à sept colonnes tant que le titre n’a pas été mis à jour.
 
 ## Configuration et caches sur D:
 
@@ -64,8 +64,8 @@ défaut et ne récupère pas les réglages distants ni les fiches éditoriales.
   communautaire PS5 Hub existant.
 - Le connecteur PSPKG lit `robots.txt` avant les listes publiques `/ps4/` et
   `/ps5/`. Il reconnaît leurs cartes HTML, titres, plateformes, identifiants de
-  fiche, URL de page et URL de jaquette. Il parcourt deux pages par synchronisation
-  (une par plateforme), avec cache ETag associé à chaque URL et curseurs persistés.
+  fiche, URL de page et URL de jaquette. Il actualise la première page de chaque plateforme et une page ancienne par
+  plateforme à chaque synchronisation (deux à quatre pages au total), avec cache ETag associé à chaque URL et curseurs persistés.
 - Les API internes et pages `download-` exclues ne sont pas interrogées. Aucune API
   publique officielle documentée n'a été identifiée. Une page publique accessible
   ne constitue pas une autorisation de redistribuer le jeu correspondant.
@@ -86,7 +86,7 @@ défaut et ne récupère pas les réglages distants ni les fiches éditoriales.
   publier un catalogue vide pour retirer effectivement leurs fiches.
 - La synchronisation horaire est configurée à la minute 17. La limite globale est
   de 10000 fiches. Les références disparues de PSPKG ne sont pas encore purgées
-  automatiquement. La progression initiale peut prendre plusieurs cycles.
+  automatiquement. L’import initial du 18 octobre a parcouru 274 pages PS4 et 38 pages PS5 : 5571 identifiants uniques ont été conservés. Le catalogue public totalise 5663 fiches avec les projets communautaires. Ces nombres décrivent les listes accessibles pendant le relevé, sans garantie d’exhaustivité de tout le site.
 
 ## API et cohérence
 
@@ -113,5 +113,5 @@ Un verrou transactionnel nécessiterait un composant supplémentaire.
 
 Les tests Node couvrent la structure des cartes, la pagination, les règles robots,
 les restrictions d'accès, les ETags, les autorisations de fichiers directs, le
-cache par source, les suppressions et les contrôles administrateur. Ils ne
-valident ni un téléchargement PKG sur PS5, ni etaHEN, ni le firmware 13.60.
+cache par source, les suppressions et les contrôles administrateur. Les tests HTTPS locaux exercent aussi le vrai téléchargeur C++ et ses reprises.
+Ils ne valident ni un téléchargement PKG sur PS5, ni etaHEN, ni le firmware 13.60.

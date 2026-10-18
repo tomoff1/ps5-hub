@@ -273,7 +273,10 @@ int main(int argc, char **argv)
         // Give the worker real time, polling with idle input before the still capture.
         if(std::getenv("HUB_WAIT_IO")) {
             hui::InputFrame idle;idle.connected=true;
-            for(int i=0;i<120;++i){usleep(10000);shell.update(idle,kDt);}
+            const char *configured=std::getenv("HUB_WAIT_IO_MS");
+            const long milliseconds=configured?std::strtol(configured,nullptr,10):1200;
+            const long ticks=milliseconds<0?0:milliseconds>10000?1000:milliseconds/10;
+            for(long i=0;i<ticks;++i){usleep(10000);shell.update(idle,kDt);}
         }
         shell.compose(renderer);
         glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);

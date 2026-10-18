@@ -8,9 +8,10 @@ namespace hub
 std::shared_ptr<const Artwork> read_artwork(const std::string &path)
 {
     std::string data;
-    if (!hui::save::read_file(path, &data, 12 + 256 * 384 * 4) || data.size() < 12 ||
-        data.substr(0, 4) != "HUBA")
+    if (!hui::save::read_file(path, &data, 8 * 1024 * 1024) || data.size() < 12)
         return {};
+    if (data.substr(0, 4) != "HUBA")
+        return decode_artwork(data);
     const auto number = [&](int at)
     {
         std::uint32_t n = 0;
@@ -27,5 +28,17 @@ std::shared_ptr<const Artwork> read_artwork(const std::string &path)
     art->height = static_cast<int>(height);
     art->pixels.assign(data.begin() + 12, data.end());
     return art;
+}
+std::string write_artwork(const std::string &path, const Artwork &art)
+{
+    if (art.width < 1 || art.height < 1 || art.width > 256 || art.height > 384 ||
+        art.pixels.size() != static_cast<std::size_t>(art.width * art.height * 4))
+        return "Jaquette invalide";
+    std::string bytes = "HUBA";
+    for (const auto n : {art.width, art.height})
+        for (int i = 0; i < 4; ++i)
+            bytes += static_cast<char>((n >> (i * 8)) & 255);
+    bytes.append(reinterpret_cast<const char *>(art.pixels.data()), art.pixels.size());
+    return hui::save::write_atomic(path, bytes);
 }
 } // namespace hub

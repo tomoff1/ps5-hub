@@ -1,12 +1,12 @@
 # PS5 Hub
 
-Application homebrew **native C++20 / OpenGL** pour PS5, en français. L’alpha 0.3 fournit un accueil de découverte, 90 projets PS5 publiés dont 31 jeux ou portages, leurs icônes, la recherche, les favoris et des fiches avec QR pour le téléphone. Le bot Windows prépare et transfère vos PKG personnels.
+Application homebrew **native C++20 / OpenGL** pour PS5, en français. L’alpha 0.4 fournit 5663 fiches au 18 octobre 2026 : 92 projets et références communautaires et 5571 références PSPKG issues des listes publiques PS4/PS5. Elle ajoute le catalogue Cloudflare, les sources, les jaquettes WebP/JPEG/PNG, la recherche, les filtres PS4/PS5, les favoris et le téléchargement avec reprise. Le bot Windows prépare et transfère vos PKG personnels.
 
-**Démarrage de l’alpha 0.1 signalé sur la PS5 13.60 de l’utilisateur**, avec photos du titre sur l’accueil et de l’interface. Cela reste une validation partielle : l’alpha 0.3 et le transfert HyperDPI ne sont pas encore testés sur sa console. Les versions exactes de HyperHEN et ShadowMountPlus restent inconnues.
+**Démarrage de l’alpha 0.1 signalé sur la PS5 13.60 de l’utilisateur**, avec photos du titre sur l’accueil et de l’interface. Cela reste une validation partielle : l’alpha 0.4 et le transfert HyperDPI ne sont pas encore testés sur sa console. Les versions exactes de HyperHEN et ShadowMountPlus restent inconnues.
 
 ![Accueil de PS5 Hub, rendu du C++ natif avec Mesa sur PC](docs/images/accueil.jpg)
 
-Capture du rendu natif sur PC ; aucune capture PS5 n’est présentée comme preuve matérielle.
+Capture de l’alpha 0.3 rendue sur PC ; la 0.4 conserve ce moteur et ajoute le catalogue connecté et les filtres PS4/PS5. Aucune capture PC n’est présentée comme une preuve matérielle PS5.
 
 ## Fonctionnalités de cette alpha
 
@@ -17,25 +17,25 @@ Capture du rendu natif sur PC ; aucune capture PS5 n’est présentée comme pre
 - Transfert de gros PKG depuis le PC : FTP vérifié ou demande d’installation à HyperDPI après confirmation. Les fichiers ne sont pas convertis.
 - Navigation au pavé directionnel / stick, actions DualSense et clavier à l’écran du kit.
 - Icône originale et dossier de titre natif `PPSA99841` pour les chargeurs compatibles avec les dossiers homebrew.
-- Catalogue partagé de 90 projets publiés et deux références de développement, fourni avec le ZIP pour fonctionner hors ligne. Actualisation HTTPS, recherche par mots, filtres Tous / Favoris / Archives.
-- Fiches avec QR vers les développeurs, téléchargements de leurs ZIP avec empreinte SHA-256 lorsqu’ils sont disponibles. Les portages peuvent nécessiter vos données originales.
+- Catalogue fourni avec le ZIP pour fonctionner hors ligne, actualisé au démarrage puis toutes les 15 minutes depuis Cloudflare. Filtres Tous / Favoris / Téléchargeables / PS4 / PS5 ; provenance et état des sources dans les paramètres.
+- Fiches avec QR vers la source ; téléchargement des fichiers directs autorisés avec empreinte SHA-256 lorsqu’ils sont disponibles. Les portages peuvent nécessiter vos données originales.
 - Favoris sauvegardés sur la console ; les imports personnels restent prioritaires et privés.
 - Ajout de liens personnels vers des archives ou des PKG depuis la manette ; sauvegarde dans le stockage du titre.
-- Téléchargement après confirmation, HTTPS vérifié, contrôle SHA-256 obligatoire, annulation et fichiers temporaires.
+- Téléchargement après confirmation, HTTPS vérifié, SHA-256 obligatoire, progression et vitesse, suspension/reprise et publication atomique. Inspection CNT/FIH pour les fichiers PKG ; taille et identité vérifiées lorsqu’elles sont fournies.
 - Liste des téléchargements, préférences persistantes, journal des erreurs et recherche de version PS5 Hub.
 - Scripts de compilation WSL, préparation du ZIP, transfert FTP 2121 vérifié et workflow GitHub Actions.
 
-**Limites :** l’application PS5 ne réalise pas encore d’installation système elle-même et n’explore pas tout le disque. Ses petits téléchargements utilisent le stockage privé. Les gros PKG passent par le bot PC ; une acceptation HyperDPI n’est pas annoncée comme une installation terminée. Aucune collection de jeux commerciaux n’est fournie.
+**Limites :** l’application PS5 ne réalise pas encore d’installation système elle-même et n’explore pas tout le disque. Les téléchargements utilisent le stockage privé, dont le quota réel reste à mesurer. Le plafond logiciel est de 250 Gio par fichier ; une acceptation HyperDPI n’est pas annoncée comme une installation terminée. Aucune collection de jeux commerciaux n’est fournie.
 
-Le [guide du catalogue partagé](docs/CATALOGUE_PARTAGE_FR.md) explique le flux de l’alpha 0.3. Elle n’intègre aucun téléchargement commercial de PSPKG.
+Le [guide du catalogue partagé](docs/CATALOGUE_PARTAGE_FR.md) conserve le protocole historique 0.3 pour les anciens clients. Aucun téléchargement commercial PSPKG n’est intégré.
 
-Le [service de catalogue Cloudflare](docs/CLOUDFLARE_FR.md) ajoute une administration protégée, des connecteurs indépendants et un flux natif v2. Son premier instantané contient 92 fiches communautaires et 40 références PSPKG issues de pages publiques, avec leurs URL de jaquettes. Les références PSPKG ne fournissent aucun lien PKG. Le raccordement du client PS5 à ce nouveau service reste en cours ; publier le serveur ne met pas à jour l’exécutable déjà installé sur la console.
+Le [service de catalogue Cloudflare](docs/CLOUDFLARE_FR.md) fournit une administration protégée, des connecteurs indépendants et le flux natif v2 utilisé par 0.4. Les fiches PSPKG n’exposent aucun lien PKG et ne constituent pas des jeux distribués : elles affichent une référence et un état de vérification. Les jaquettes distantes sont chargées à la demande ; elles ne sont pas incluses dans le ZIP. Publier le serveur ne remplace pas l’exécutable déjà installé sur la console.
 
 ## Importer tous vos liens
 
 Téléchargez le ZIP **PS5-Hub-Bot-PC** dans les [préversions](https://github.com/tomoff1/ps5-hub/releases). Lancez **Bibliotheque-PC.cmd**, collez un lien direct par ligne, préparez la liste puis synchronisez-la avec l’IP locale de votre PS5. Un CSV permet de fournir les noms et les jaquettes. Le [guide du bot](docs/BOT_BIBLIOTHEQUE_FR.md) détaille aussi le transfert PKG et HyperDPI.
 
-PS5 Hub 0.1 vérifie les versions mais ne se met pas à jour automatiquement. Pour passer à 0.3, fermez l’application et remplacez les fichiers du dossier `PPSA99841` par ceux du nouveau ZIP, en conservant vos fichiers personnels. Une synchronisation du bot ajoute les fiches et images ; elle ne remplace pas l’exécutable.
+PS5 Hub 0.1 vérifie les versions mais ne se met pas à jour automatiquement. Pour passer à 0.4, fermez l’application et remplacez les fichiers du dossier `PPSA99841` par ceux du nouveau ZIP, en conservant vos fichiers personnels. Une synchronisation du bot ajoute les fiches et images ; elle ne remplace pas l’exécutable.
 
 ## Compiler et installer
 
@@ -49,7 +49,7 @@ bash tools/hub-build.sh
 
 Le dossier de test est `dist/PPSA99841/`. Le ZIP expérimental et son SHA-256 sont créés dans `dist/`. Un build réussi confirme la compilation et le format ; il ne confirme pas la compatibilité matérielle.
 
-[Validation locale de la 0.3](docs/VALIDATION_ALPHA3.md). Le [rapport 0.2](docs/VALIDATION_ALPHA2.md) et le [rapport 0.1](docs/VALIDATION_PC.md) restent disponibles pour les anciens binaires. Aucun test PC ne valide le firmware de la console.
+[Validation de la 0.4](docs/VALIDATION_ALPHA4.md). Le [rapport 0.3](docs/VALIDATION_ALPHA3.md) reste disponible. Le [rapport 0.2](docs/VALIDATION_ALPHA2.md) et le [rapport 0.1](docs/VALIDATION_PC.md) restent disponibles pour les anciens binaires. Aucun test PC ne valide le firmware de la console.
 
 ## Sources et architecture
 

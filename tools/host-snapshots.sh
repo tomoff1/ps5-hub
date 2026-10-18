@@ -40,7 +40,7 @@ for source in "${sources[@]}"; do
     objects+=("$object")
 done
 ninja_inputs=("${objects[@]}")
-ninja_edge LINK "$build/hui_snapshots" "$cxx" "${objects[@]}" -lEGL -lGL -lm -lcurl -lcrypto -pthread -o "$build/hui_snapshots"
+ninja_edge LINK "$build/hui_snapshots" "$cxx" "${objects[@]}" -lEGL -lGL -lm -lcurl -lcrypto -lwebp -lpng -ljpeg -pthread -o "$build/hui_snapshots"
 if ! ninja_run >"$build/build.log" 2>&1; then
     grep -E 'error|FAILED|warning' -A6 "$build/build.log" | head -80 >&2
     exit 1

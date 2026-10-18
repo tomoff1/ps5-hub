@@ -1,16 +1,26 @@
 # Installer PS5 Hub (alpha expérimentale)
 
-Le démarrage de l’alpha 0.1 a été signalé par l’utilisateur sur sa PS5 déclarée en **13.60**. L’alpha 0.3 reste à tester. Les versions exactes de HyperHEN et ShadowMountPlus de la console cible sont inconnues. Le dossier fourni est un titre natif expérimental.
+Le démarrage de l’alpha 0.1 a été signalé par l’utilisateur sur sa PS5 déclarée en **13.60**. L’alpha 0.4 reste à tester. Les versions exactes de HyperHEN et ShadowMountPlus de la console cible sont inconnues. Le dossier fourni est un titre natif expérimental.
 
-## Passer de 0.1 / 0.2 à 0.3
+## Passer de 0.1 / 0.2 / 0.3 à 0.4
 
-La vérification de version n’effectue pas la mise à jour. Fermez PS5 Hub, décompressez le nouveau ZIP puis remplacez les fichiers de son dossier `PPSA99841` par USB ou FTP. Conservez vos éventuels `assets/library.tsv` et jaquettes ajoutées : le nouveau ZIP n’en contient pas de personnels. Ne supprimez pas le stockage privé `/download0/hub`. Relancez ensuite l’application : le bandeau doit afficher **0.3 ALPHA**.
+La vérification de version n’effectue pas la mise à jour. Fermez PS5 Hub, décompressez le nouveau ZIP puis remplacez les fichiers de son dossier `PPSA99841` par USB ou FTP. Conservez vos éventuels `assets/library.tsv` et jaquettes ajoutées : le nouveau ZIP n’en contient pas de personnels. Ne supprimez pas le stockage privé `/download0/hub`. Relancez ensuite l’application : le bandeau doit afficher **0.4 ALPHA**.
 
-Pour importer beaucoup de jeux et leurs jaquettes, utilisez le [bot PC](BOT_BIBLIOTHEQUE_FR.md). Il faut d’abord mettre le titre en 0.3 : synchroniser une liste sur l’ancien exécutable 0.1 n’ajoute pas les nouvelles fonctionnalités.
+Pour importer beaucoup de jeux et leurs jaquettes, utilisez le [bot PC](BOT_BIBLIOTHEQUE_FR.md). Il faut d’abord mettre le titre en 0.4 : synchroniser une liste sur l’ancien exécutable 0.1 n’ajoute pas les nouvelles fonctionnalités.
+
+Le paquet 0.4 contient 5663 fiches : 92 projets communautaires et 5571 références
+PSPKG issues des listes publiques parcourues le 18 octobre 2026. Ce sont des
+fiches, pas des jeux fournis avec l’application. Une référence PSPKG affiche sa
+source, sa jaquette en ligne et son état de vérification ; aucun lien PKG commercial
+n’a été extrait. Le bouton de téléchargement est réservé aux fichiers directs
+avec autorisation et SHA-256. Les images publiques manquantes restent des
+illustrations de remplacement ; WebP, JPEG et PNG sont décodés sur le travailleur.
+Le titre se synchronise au démarrage puis toutes les quinze minutes lorsqu’il
+est ouvert et qu’aucune autre opération n’occupe le travailleur.
 
 ## USB
 
-1. Décompressez `PS5-Hub-00.003.000-experimental.zip` sur votre PC.
+1. Décompressez `PS5-Hub-00.004.000-experimental.zip` sur votre PC.
 2. Copiez le dossier `PPSA99841` dans `homebrew` à la racine de la clé USB, sur un système de fichiers pris en charge par votre chargeur. La structure attendue est `USB:/homebrew/PPSA99841/eboot.bin`, avec `sce_sys`, `sce_module` et `assets` à côté.
 3. Démarrez votre environnement homebrew habituel et la version de ShadowMountPlus que vous utilisez déjà. Attendez son analyse des dossiers.
 4. Si le titre est enregistré, ouvrez **PS5 Hub** depuis l’accueil. La présence de l’icône ne prouve pas que l’exécutable est compatible.
@@ -35,16 +45,16 @@ Le script affiche la destination et demande de taper `OUI`. Pour un compte FTP p
 - Carré : actualiser ; pendant une opération, demander son annulation.
 - Paramètres : animations, sons, recherche de mise à jour.
 
-**Jeux** reçoit les PKG personnels ; **Homebrew** et **Applications** reçoivent des archives homebrew. Le catalogue public est actualisé par HTTPS sans remplacer vos imports. L1 recherche, R1 filtre et Options change les favoris. Les fiches proposent un QR vers le développeur. Voir [catalogue partagé](CATALOGUE_PARTAGE_FR.md).
+**Jeux** reçoit les PKG personnels ; **Homebrew** et **Applications** reçoivent des archives homebrew. Le catalogue public est actualisé par HTTPS sans remplacer vos imports. L1 recherche, R1 filtre Tous / Favoris / Téléchargeables / PS4 / PS5 et Options change les favoris. Les fiches proposent un QR vers le développeur. Voir [catalogue partagé](CATALOGUE_PARTAGE_FR.md).
 
-Les téléchargements sont limités à 2 Gio par fichier et à l’espace réellement accessible. Le stockage propre au titre peut être bien plus petit : cette alpha convient aux petits homebrews, pas à une bibliothèque de gros jeux. Un fichier n’apparaît avec son nom final qu’après réussite du transfert et vérification SHA-256.
+Les téléchargements natifs acceptent au maximum 250 Gio par fichier, dans la limite de l’espace réellement accessible. Le quota du stockage privé sur PS5 reste à mesurer : cette limite logicielle ne garantit pas que de gros jeux y tiennent. Une interruption conserve les fichiers de reprise ; relancez le téléchargement depuis sa fiche pour reprendre. Un fichier n’apparaît avec son nom final qu’après réussite du transfert et vérification SHA-256.
 
 ## Stockage et journaux
 
 Dans l’application, les données sont dans `/download0/hub` :
 
 - `personal.tsv` : catalogue personnel ;
-- `shared.tsv` : copie validée du catalogue public ;
+- `shared-v2.tsv` : copie validée du catalogue Cloudflare (l’ancien `shared.tsv` n’est plus utilisé) ;
 - `favorites.txt` : identifiants des favoris ;
 - `covers/` : cache des nouvelles jaquettes publiques ;
 - `downloads/` : fichiers téléchargés ;

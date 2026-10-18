@@ -50,10 +50,54 @@ TEST(HubCatalog, BoundsAndHash)
 {
     std::vector<hub::Entry> entries;
     std::string error;
-    EXPECT_FALSE(hub::parse_catalog(std::string(4 * 1024 * 1024 + 1, 'x'), entries, error));
+    EXPECT_FALSE(hub::parse_catalog(std::string(16 * 1024 * 1024 + 1, '#'), entries, error));
     EXPECT_TRUE(hub::valid_hash(std::string(64, 'a')));
     EXPECT_FALSE(hub::valid_hash(std::string(63, 'a')));
     EXPECT_FALSE(hub::valid_hash(std::string(64, 'g')));
+}
+TEST(HubCatalog, RemoteV2PreservesProvenanceAndBlocksUnconfirmedFiles)
+{
+    hub::Entry e{"test", "Titre", "0.0.0", "game", "https://example.org/page", "", "Référence"};
+    e.source = "PSPKG";
+    e.platform = "PS4";
+    e.format = "REFERENCE";
+    e.access = "verification";
+    e.authorization = "unconfirmed";
+    e.page_url = e.url;
+    e.cover_url = "https://example.org/cover.webp";
+    std::vector<hub::Entry> parsed;
+    std::string error;
+    ASSERT_TRUE(hub::parse_catalog(hub::serialize({e}), parsed, error)) << error;
+    ASSERT_EQ(parsed.size(), 1u);
+    EXPECT_EQ(parsed[0].source, "PSPKG");
+    EXPECT_EQ(parsed[0].platform, "PS4");
+    EXPECT_FALSE(hub::download_block_reason(parsed[0]).empty());
+    EXPECT_TRUE(hub::matches(parsed[0], "pspkg"));
+    std::vector<hub::SourceStatus> sources;
+    ASSERT_TRUE(hub::parse_sources("#SOURCE\tpspkg\tPSPKG\tmetadata-only\tRéférences publiques\n",
+                                   sources, error));
+    EXPECT_EQ(sources.size(), 1u);
+    EXPECT_FALSE(
+        hub::parse_sources("#SOURCE\tx\tX\tready\tOK\n#SOURCE\tx\tX\tready\tOK\n", sources, error));
+}
+TEST(HubArtCodec, DecodesRealFormatsAndCachesBoundedRgba)
+{
+    for (const auto *suffix : {"webp", "png", "jpg"})
+    {
+        auto art = hub::read_artwork(std::string("tests/fixtures/artwork/test.") + suffix);
+        ASSERT_NE(art, nullptr) << suffix;
+        EXPECT_LE(art->width, 256);
+        EXPECT_LE(art->height, 384);
+        EXPECT_EQ(art->pixels.size(), static_cast<std::size_t>(art->width * art->height * 4));
+        EXPECT_NEAR(art->pixels[0], 38, 4);
+        EXPECT_NEAR(art->pixels[1], 172, 4);
+        EXPECT_EQ(art->pixels[3], 255);
+        std::string encoded;
+        ASSERT_TRUE(hui::save::read_file(std::string("tests/fixtures/artwork/test.") + suffix, &encoded));
+        EXPECT_EQ(hub::decode_artwork(encoded.substr(0, 24)), nullptr);
+    }
+    EXPECT_EQ(hub::decode_artwork("<html>verification</html>"), nullptr);
+    EXPECT_EQ(hub::decode_artwork(std::string(8 * 1024 * 1024 + 1, 'x')), nullptr);
 }
 TEST(HubVersion, NumericRatherThanLexicographic)
 {
@@ -78,7 +122,8 @@ TEST(HubCatalog, DistinguishesGameArchivesAndReferencePages)
 }
 TEST(HubCatalog, SearchesAllWordsWithFrenchAccents)
 {
-    hub::Entry game{"ete", "Été à Paris", "1.0.0", "game", "https://example.org", "", "Jeu de stratégie"};
+    hub::Entry game{"ete", "Été à Paris",     "1.0.0", "game", "https://example.org",
+                    "",    "Jeu de stratégie"};
     EXPECT_TRUE(hub::matches(game, "  PARIS ete  "));
     EXPECT_TRUE(hub::matches(game, "strategie"));
     EXPECT_FALSE(hub::matches(game, "Paris Lyon"));
@@ -96,7 +141,8 @@ TEST(HubCatalog, BundledCatalogAndItsPublicArtworkAreReadable)
     {
         games += hub::is_game(entry);
         if (entry.id.starts_with("ppsa"))
-            EXPECT_NE(hub::read_artwork("assets/covers/" + entry.id + ".hubart"), nullptr) << entry.id;
+            EXPECT_NE(hub::read_artwork("assets/covers/" + entry.id + ".hubart"), nullptr)
+                << entry.id;
         if (!hub::is_reference(entry))
             EXPECT_TRUE(hub::valid_hash(entry.sha256)) << entry.id;
     }

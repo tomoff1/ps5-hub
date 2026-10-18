@@ -60,5 +60,5 @@ for source in "${sources[@]}"; do
 done
 ninja_inputs=("${objects[@]}" "$cxx")
 ninja_edge LINK "$build/unit_tests" "$cxx" "${flags[@]}" -pthread "${sanitizers[@]}" \
-    "${objects[@]}" "${ldflags[@]}" -lm -lcurl -lcrypto -o "$build/unit_tests"
+    "${objects[@]}" "${ldflags[@]}" -lm -lcurl -lcrypto -lwebp -lpng -ljpeg -o "$build/unit_tests"
 ninja_run

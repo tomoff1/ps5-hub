@@ -130,7 +130,7 @@ except subprocess.CalledProcessError:
 
 libs = []
 for flag in raw_libs:
-    if flag == "-pthread":
+    if flag == "-pthread" or flag.startswith("-D"):
         if flag not in cflags:
             cflags.append(flag)
     elif flag.startswith("-Wl,"):

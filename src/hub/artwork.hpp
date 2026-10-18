@@ -14,4 +14,6 @@ struct Artwork
     std::vector<std::uint8_t> pixels;
 };
 std::shared_ptr<const Artwork> read_artwork(const std::string &path);
+std::shared_ptr<const Artwork> decode_artwork(const std::string &bytes);
+std::string write_artwork(const std::string &path, const Artwork &art);
 } // namespace hub

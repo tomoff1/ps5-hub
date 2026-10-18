@@ -31,6 +31,7 @@ def package():
     shutil.copy2(ROOT/'docs/COMPATIBILITE_13_60.md',folder/'COMPATIBILITE_13_60.md')
     shutil.copy2(ROOT/'docs/BOT_BIBLIOTHEQUE_FR.md',folder/'BOT_BIBLIOTHEQUE_FR.md')
     shutil.copy2(ROOT/'docs/CATALOGUE_PARTAGE_FR.md',folder/'CATALOGUE_PARTAGE_FR.md')
+    shutil.copy2(ROOT/'docs/CLOUDFLARE_FR.md',folder/'CLOUDFLARE_FR.md')
     archive = ROOT / 'dist' / f'PS5-Hub-{meta["contentVersion"]}-experimental.zip'
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
         for path in sorted(folder.rglob('*')):

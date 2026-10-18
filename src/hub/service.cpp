@@ -3,45 +3,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "hub/service.hpp"
 #include "core/save_file.hpp"
-#include <curl/curl.h>
-#include <openssl/evp.h>
+#include "hub/download.hpp"
+#include "hub/package.hpp"
 #include <cstdio>
 #include <sys/stat.h>
 #include <unistd.h>
-#ifdef HUB_PS5
-#include "platform/ps5/console_curl.h"
-#endif
 
 namespace hub
 {
-namespace
-{
-struct Sink
-{
-    Service *service;
-    std::FILE *file;
-    EVP_MD_CTX *hash;
-    std::uint64_t count = 0, limit = 0;
-};
-std::size_t write_chunk(char *data, std::size_t size, std::size_t n, void *user)
-{
-    auto &s = *static_cast<Sink *>(user);
-    if (size && n > SIZE_MAX / size)
-        return 0;
-    const auto bytes = size * n;
-    if (s.service->cancelled() || bytes > s.limit - s.count)
-        return 0;
-    if (std::fwrite(data, 1, bytes, s.file) != bytes || EVP_DigestUpdate(s.hash, data, bytes) != 1)
-        return 0;
-    s.count += bytes;
-    s.service->count(s.count);
-    return bytes;
-}
-int progress(void *user, curl_off_t, curl_off_t, curl_off_t, curl_off_t)
-{
-    return static_cast<Service *>(user)->cancelled() ? 1 : 0;
-}
-} // namespace
 Service::Service(std::string root, std::string assets)
     : root_(std::move(root)), assets_(std::move(assets))
 {
@@ -120,6 +89,8 @@ bool Service::start(Job job, Entry entry)
     entry_ = std::move(entry);
     cancel_ = false;
     received_ = 0;
+    total_ = 0;
+    speed_ = 0;
     {
         std::lock_guard lock(mutex_);
         state_.busy = true;
@@ -168,83 +139,20 @@ std::string Service::transfer(const std::string &url, const std::string &path,
     (void)limit;
     return "Réseau désactivé dans les tests unitaires";
 #endif
-    if (!valid_url(url))
-        return "Adresse HTTPS invalide";
-    if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK)
-        return "Initialisation réseau impossible";
-    auto *curl = curl_easy_init();
-    auto *digest = EVP_MD_CTX_new();
-    const auto temp = path + ".part";
-    auto *file = std::fopen(temp.c_str(), "wb");
-    if (!curl || !digest || !file)
+    DownloadRequest request;
+    request.url = url;
+    request.path = path;
+    request.sha256 = hash;
+    request.limit = limit;
+    request.retain_partial = false;
+    request.cancelled = [this] { return cancelled(); };
+    request.progress = [this](TransferProgress p)
     {
-        if (file)
-            std::fclose(file);
-        if (curl)
-            curl_easy_cleanup(curl);
-        EVP_MD_CTX_free(digest);
-        curl_global_cleanup();
-        std::remove(temp.c_str());
-        return "Impossible de préparer le téléchargement";
-    }
-    Sink sink{this, file, digest, 0, limit};
-    bool hash_ok = EVP_DigestInit_ex(digest, EVP_sha256(), nullptr) == 1;
-#ifdef HUB_PS5
-    console_curl_setup(curl);
-#endif
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_PROTOCOLS_STR, "https");
-    curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS_STR, "https");
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
-    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
-    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 3600L);
-    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1024L);
-    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 30L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "PS5-Hub/0.3");
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_chunk);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &sink);
-    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progress);
-    curl_easy_setopt(curl, CURLOPT_XFERINFODATA, this);
-    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
-    const auto rc = hash_ok ? curl_easy_perform(curl) : CURLE_FAILED_INIT;
-    unsigned char result[32];
-    unsigned length = 0;
-    hash_ok = hash_ok && EVP_DigestFinal_ex(digest, result, &length) == 1 && length == 32;
-    bool disk = std::fflush(file) == 0;
-    if (disk)
-        disk = fsync(fileno(file)) == 0;
-    if (std::fclose(file) != 0)
-        disk = false;
-    curl_easy_cleanup(curl);
-    EVP_MD_CTX_free(digest);
-    curl_global_cleanup();
-    std::string actual;
-    if (hash_ok)
-        for (unsigned char byte : result)
-        {
-            actual += "0123456789abcdef"[byte >> 4];
-            actual += "0123456789abcdef"[byte & 15];
-        }
-    std::string error;
-    if (cancelled())
-        error = "Téléchargement annulé";
-    else if (rc != CURLE_OK)
-        error = "Échec réseau, certificat, espace disque ou limite de taille (code " +
-                std::to_string(rc) + ")";
-    else if (!disk || !hash_ok)
-        error = "Échec de vérification ou d’écriture";
-    else if (!hash.empty() && actual != hash)
-        error = "Empreinte SHA-256 incorrecte : fichier rejeté";
-    else if (std::rename(temp.c_str(), path.c_str()) != 0)
-        error = "Impossible de publier le fichier téléchargé";
-    if (!error.empty())
-        std::remove(temp.c_str());
-    return error;
+        received_ = p.received;
+        total_ = p.total;
+        speed_ = p.bytes_per_second;
+    };
+    return download_file(request).error;
 }
 void Service::execute()
 {
@@ -273,13 +181,21 @@ void Service::execute()
             if (!art && public_ids_.count(id))
             {
                 const auto candidate = cached + ".incoming";
-                const auto error = transfer(
-                    "https://raw.githubusercontent.com/tomoff1/ps5-hub/main/assets/covers/" + id + ".hubart",
-                    candidate, "", 12 + 256 * 384 * 4);
+                std::string url;
+                for (const auto &entry : snapshot().entries)
+                    if (entry.id == id)
+                    {
+                        url = entry.cover_url;
+                        break;
+                    }
+                if (url.empty())
+                    url = "https://raw.githubusercontent.com/tomoff1/ps5-hub/main/assets/covers/" +
+                          id + ".hubart";
+                const auto error = transfer(url, candidate, "", 8 * 1024 * 1024);
                 if (error.empty())
                 {
                     art = read_artwork(candidate);
-                    if (art && std::rename(candidate.c_str(), cached.c_str()) != 0)
+                    if (art && !write_artwork(cached, *art).empty())
                         art.reset();
                 }
                 std::remove(candidate.c_str());
@@ -297,19 +213,20 @@ void Service::execute()
     if (job_ == Job::sync)
     {
         const auto candidate = root_ + "/shared.incoming";
-        auto error = transfer(
-            "https://raw.githubusercontent.com/tomoff1/ps5-hub/main/shared/catalog.tsv",
-            candidate, "", 4 * 1024 * 1024);
+        auto error = transfer(catalog_url, candidate, "", 16 * 1024 * 1024);
         std::string text;
         std::vector<Entry> entries;
-        if (error.empty() && !save::read_file(candidate, &text, 4 * 1024 * 1024))
+        if (error.empty() && !save::read_file(candidate, &text, 16 * 1024 * 1024))
             error = "Réponse du catalogue illisible";
         if (error.empty() && !parse_catalog(text, entries, error))
             error = "Catalogue distant invalide : " + error;
-        if (error.empty() && entries.empty())
-            error = "Catalogue distant vide, copie précédente conservée";
+        std::vector<SourceStatus> sources;
+        if (error.empty() && !parse_sources(text, sources, error))
+            error = "États de sources invalides : " + error;
+        if (error.empty() && entries.empty() && sources.empty())
+            error = "Catalogue distant vide sans état de source, copie précédente conservée";
         if (error.empty())
-            error = save::write_atomic(root_ + "/shared.tsv", text);
+            error = save::write_atomic(root_ + "/shared-v2.tsv", text);
         std::remove(candidate.c_str());
         if (!error.empty())
         {
@@ -324,8 +241,9 @@ void Service::execute()
     {
         std::string text, error;
         std::vector<Entry> all;
-        if (!save::read_file(assets_ + "/catalog.tsv", &text, 1024 * 1024) ||
-            !parse_catalog(text, all, error))
+        std::vector<SourceStatus> sources;
+        if (!save::read_file(assets_ + "/catalog.tsv", &text, 16 * 1024 * 1024) ||
+            !parse_catalog(text, all, error) || !parse_sources(text, sources, error))
         {
             finish("Catalogue fourni illisible : " + error);
             return;
@@ -333,12 +251,20 @@ void Service::execute()
         // Le catalogue partagé remplace uniquement les fiches fournies ; les
         // imports privés sont fusionnés ensuite et restent prioritaires.
         struct stat shared_facts{};
-        if (stat((root_ + "/shared.tsv").c_str(), &shared_facts) == 0)
+        if (stat((root_ + "/shared-v2.tsv").c_str(), &shared_facts) == 0)
         {
             std::vector<Entry> shared;
-            if (save::read_file(root_ + "/shared.tsv", &text, 4 * 1024 * 1024) &&
-                parse_catalog(text, shared, error) && !shared.empty())
-                all = std::move(shared);
+            if (save::read_file(root_ + "/shared-v2.tsv", &text, 16 * 1024 * 1024) &&
+                parse_catalog(text, shared, error))
+            {
+                std::vector<SourceStatus> remote_sources;
+                if (parse_sources(text, remote_sources, error) &&
+                    (!shared.empty() || !remote_sources.empty()))
+                {
+                    all = std::move(shared);
+                    sources = std::move(remote_sources);
+                }
+            }
         }
         struct stat library_facts{};
         public_ids_.clear();
@@ -347,7 +273,7 @@ void Service::execute()
         if (stat((assets_ + "/library.tsv").c_str(), &library_facts) == 0)
         {
             std::vector<Entry> library;
-            if (!save::read_file(assets_ + "/library.tsv", &text, 4 * 1024 * 1024) ||
+            if (!save::read_file(assets_ + "/library.tsv", &text, 16 * 1024 * 1024) ||
                 !parse_catalog(text, library, error))
             {
                 finish("Bibliothèque PC illisible : " + error);
@@ -371,7 +297,7 @@ void Service::execute()
         if (stat((root_ + "/personal.tsv").c_str(), &facts) == 0)
         {
             std::vector<Entry> personal;
-            if (!save::read_file(root_ + "/personal.tsv", &text, 4 * 1024 * 1024) ||
+            if (!save::read_file(root_ + "/personal.tsv", &text, 16 * 1024 * 1024) ||
                 !parse_catalog(text, personal, error))
             {
                 finish("Catalogue personnel illisible : " + error);
@@ -395,6 +321,7 @@ void Service::execute()
         {
             std::lock_guard lock(mutex_);
             state_.entries = std::move(all);
+            state_.sources = std::move(sources);
             state_.files = std::move(files);
         }
         finish("Bibliothèque chargée. Croix : ouvrir · Triangle : ajouter · Carré : actualiser.");
@@ -436,23 +363,39 @@ void Service::execute()
     }
     else if (job_ == Job::download)
     {
-        auto error = validate(entry_);
-        if (error.empty() && !valid_hash(entry_.sha256))
-            error = "Ajoute le SHA-256 fourni par l’auteur avant de télécharger";
-        if (error.empty() && is_reference(entry_))
-            error = "Cette fiche est un lien de référence, pas un fichier";
+        auto error = download_block_reason(entry_);
         if (error.empty())
-            error = transfer(entry_.url,
-                             root_ + "/downloads/" + entry_.id +
-                                 (entry_.kind == "pkg" ? ".pkg" : ".zip"),
-                             entry_.sha256, 2ULL * 1024 * 1024 * 1024);
+        {
+#ifdef HUB_TEST
+            error = "Réseau désactivé dans les tests unitaires";
+#else
+            const bool pkg = entry_.kind == "pkg" || entry_.format == "PKG";
+            DownloadRequest request;
+            request.url = entry_.url;
+            request.path = root_ + "/downloads/" + entry_.id + (pkg ? ".pkg" : ".zip");
+            request.sha256 = entry_.sha256;
+            request.expected_size = entry_.size;
+            request.cancelled = [this] { return cancelled(); };
+            request.progress = [this](TransferProgress p)
+            {
+                received_ = p.received;
+                total_ = p.total;
+                speed_ = p.bytes_per_second;
+            };
+            if (pkg)
+                request.validate_file = [this](const std::string &path)
+                { return validate_package(path, entry_.platform, entry_.title_id); };
+            error = download_file(request).error;
+#endif
+        }
         auto files = save::list_files(root_ + "/downloads");
         {
             std::lock_guard lock(mutex_);
             state_.files = std::move(files);
         }
-        finish(error.empty() ? "Fichier téléchargé et vérifié. Installation système non disponible."
-                             : error);
+        finish(error.empty()
+                   ? "Fichier téléchargé et vérifié. Installation système manuelle requise."
+                   : error);
     }
     else
     {

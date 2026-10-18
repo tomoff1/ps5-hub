@@ -12,10 +12,13 @@
 
 namespace hub
 {
-inline constexpr char version[] = "00.003.000";
+inline constexpr char version[] = "00.004.000";
+inline constexpr char catalog_url[] =
+    "https://ps5-hub-catalog.ps5-hub-catalog-service.workers.dev/api/native/catalog.tsv";
 struct Snapshot
 {
     std::vector<Entry> entries;
+    std::vector<SourceStatus> sources;
     std::vector<std::string> files;
     std::string message = "Chargement du catalogue…";
     bool busy = false;
@@ -42,6 +45,14 @@ class Service
     std::uint64_t bytes() const
     {
         return received_.load();
+    }
+    std::uint64_t total() const
+    {
+        return total_.load();
+    }
+    std::uint64_t speed() const
+    {
+        return speed_.load();
     }
     bool cancelled() const
     {
@@ -79,5 +90,6 @@ class Service
     std::set<std::string> public_ids_;
     std::atomic<bool> cancel_{false};
     std::atomic<std::uint64_t> received_{0};
+    std::atomic<std::uint64_t> total_{0}, speed_{0};
 };
 } // namespace hub

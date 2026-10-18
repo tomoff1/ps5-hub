@@ -1,0 +1,24 @@
+{
+  "schema": 2,
+  "collected_on": "2026-10-18",
+  "total_records": 5663,
+  "sources": [
+    {
+      "name": "Communauté PS5",
+      "records": 92,
+      "provenance": "catalog-provenance.json"
+    },
+    {
+      "name": "PSPKG",
+      "records": 5571,
+      "ps4_records": 4813,
+      "ps5_records": 758,
+      "public_lists": ["https://pspkg.com/ps4/", "https://pspkg.com/ps5/"],
+      "robots": "https://pspkg.com/robots.txt",
+      "method": "Public HTML listings, 274 PS4 pages and 38 PS5 pages, deduplicated by platform and public card ID.",
+      "scope": "Factual titles, platform labels, public page IDs and cover URL references only. No commercial descriptions, cover image files or package download links are bundled.",
+      "download_authorization": "unconfirmed",
+      "exhaustiveness": "Observed accessible listings at collection time; not a guarantee of all site contents."
+    }
+  ]
+}

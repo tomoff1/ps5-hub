@@ -31,6 +31,18 @@ test('une page de vérification ou une structure inconnue ne vide pas le catalog
   assert.throws(() => parsePspkgListing('<html>Vérifiez votre navigateur</html>', page, source), /Aucune carte/);
 });
 
+test('la pagination conserve la plateforme lorsque le site renvoie des liens localisés', () => {
+  const html=listing.replace('?page=2','/ar/ps4/?page=2');
+  assert.equal(parsePspkgListing(html,page,source).next,'https://pspkg.com/ps4/?page=2');
+  assert.equal(parsePspkgListing(html,'https://pspkg.com/ar/ps4/?page=1',source).entries[0].platform,'PS4');
+});
+
+test('une jaquette inconnue ne supprime pas le jeu et n’est pas récupérée', () => {
+  const html=listing.replace('https://img.pspkg.com/test.webp','https://unknown.example/test.webp');
+  const result=parsePspkgListing(html,page,source);
+  assert.equal(result.entries.length,1); assert.equal(result.entries[0].cover_url,'');
+});
+
 test('robots : restrictions, exceptions, groupes spécifiques et fin de chemin', () => {
   const robots = 'User-agent: *\nDisallow: /api/\nDisallow: /ps4/download-\nAllow: /ps4/\nDisallow: /*.json$';
   assert.equal(robotsAllows(robots, page), true);
@@ -103,4 +115,19 @@ test('une source désactivée ne déclenche aucune requête', async () => {
   const result = await synchronize({...source, enabled:false}, null, () => { throw new Error('appel interdit'); });
   assert.equal(result.state, 'disabled');
   assert.deepEqual(result.entries, []);
+});
+
+test('la rotation des anciennes pages continue de récupérer les nouveautés', async () => {
+  const calls=[];
+  const fetcher=async url=>{
+    calls.push(url);
+    if(url.endsWith('robots.txt'))return new Response('User-agent: *\nAllow: /');
+    const platform=new URL(url).pathname.includes('ps4')?'ps4':'ps5';
+    const n=Number(new URL(url).searchParams.get('page'));
+    const html=listing.replace('data-id="123"',`data-id="${n}"`).replace('exemple-123.html',`exemple-${n}.html`).replace('?page=2','?page='+(n+1));
+    return new Response(html.replaceAll('PS4',platform.toUpperCase()));
+  };
+  const result=await synchronize(source,{cursors:{PS4:3,PS5:4},entries:[]},fetcher);
+  assert.deepEqual(calls.slice(1),['https://pspkg.com/ps4/?page=1','https://pspkg.com/ps4/?page=3','https://pspkg.com/ps5/?page=1','https://pspkg.com/ps5/?page=4']);
+  assert.deepEqual(result.cursors,{PS4:4,PS5:5});
 });

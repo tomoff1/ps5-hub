@@ -71,9 +71,9 @@ Selon le montage du chargeur, le serveur FTP peut exposer ces données pendant l
 
 ## Installation des autres applications
 
-Cette alpha sait télécharger et vérifier une archive ou un PKG. **L’installation système depuis PS5 Hub n’est pas encore implémentée.** Aucun appel d’installation HyperHEN non documenté n’est inventé. La rubrique Fichiers consulte uniquement les téléchargements du titre ; elle n’est pas encore un explorateur de tout le disque.
+Cette alpha télécharge et vérifie les fichiers directs autorisés. Pour un PKG, elle propose un envoi au service etaHEN DPIv2 identifié, après confirmation et contrôles locaux ; le résultat final doit être vérifié dans les notifications système. La rubrique Téléchargements consulte uniquement les fichiers du Hub ; elle n’est pas un explorateur de tout le disque.
 
-Pour une archive homebrew, vérifiez son origine et les instructions de son auteur, extrayez-la sur PC, puis transférez le dossier natif selon sa documentation. Pour un PKG, utilisez votre installateur déjà compatible et testé. Le script FTP de ce projet est destiné aux dossiers natifs structurés comme PS5 Hub, pas à l’installation des PKG.
+Pour une archive homebrew, vérifiez son origine et les instructions de son auteur, extrayez-la sur PC, puis transférez le dossier natif selon sa documentation. Sans service DPIv2 compatible, utilisez votre installateur déjà testé pour les PKG. Le script FTP de ce projet est destiné aux dossiers natifs structurés comme PS5 Hub, pas à l’installation des PKG.
 
 Si PS5 Hub ne se lance pas, relevez le message exact, le modèle de console, les versions de HyperHEN et ShadowMountPlus et le hash du ZIP. Arrêtez le test si la console ne répond plus ; ne multipliez pas les relances automatiques.
 

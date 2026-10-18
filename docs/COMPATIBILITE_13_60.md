@@ -51,7 +51,7 @@ Résultat : non testé / échec / partiel / validé pour CETTE configuration
 
 La validation ne doit être ajoutée au README qu’avec ce compte rendu et l’artefact correspondant.
 
-## Fonctions 0.5 à vérifier sur console
+## Fonctions natives à vérifier sur console
 
 - Ouvrir une page HTTPS publique avec Triangle, noter le code d’erreur si le système refuse. Tester le retour dans le titre et la navigation DualSense dans le navigateur système, puis les connexions normales du site. Aucune disponibilité WebView ni intégration des cookies n’est annoncée.
 - Avec un petit fichier autorisé, tester file, pause, reprise réseau, annulation, fermeture et reprise manuelle au redémarrage. Mesurer le quota `/download0` réel.

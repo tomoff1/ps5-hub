@@ -41,6 +41,8 @@ jobs:
         run: HOST_CXX=clang++-18 bash tools/hub-download-tests.sh
       - name: Tests du transfert FTP simulé
         run: python3 -m unittest discover -s tests -p test_hub_tools.py -v
+      - name: Tests du connecteur etaHEN avec serveur local simulé
+        run: HOST_CXX=clang++-18 bash tools/hub-installer-tests.sh
       - name: Tests du bot de bibliothèque
         run: python3 -m unittest discover -s tests -p test_library_bot.py -v
       - name: Rendu natif hors écran

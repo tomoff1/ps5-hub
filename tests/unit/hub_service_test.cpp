@@ -68,7 +68,7 @@ TEST_F(HubService, RejectsDuplicateAndMissingChecksum)
     wait(service);
     EXPECT_EQ(service.snapshot().entries.size(), 1u);
     EXPECT_NE(service.snapshot().message.find("existe"), std::string::npos);
-    ASSERT_TRUE(service.download(entry()));
+    EXPECT_FALSE(service.download(entry()));
     wait(service);
     EXPECT_NE(service.snapshot().message.find("SHA-256"), std::string::npos);
     EXPECT_FALSE(std::filesystem::exists(root + "/data/downloads/mon-jeu.pkg"));
@@ -107,10 +107,12 @@ TEST_F(HubService, SharedCatalogKeepsPrivateOverrides)
     wait(service);
     auto shared = entry();
     shared.title = "Version du catalogue partagé";
-    ASSERT_TRUE(hui::save::write_atomic(root + "/data/shared.tsv", hub::serialize({shared})).empty());
+    ASSERT_TRUE(
+        hui::save::write_atomic(root + "/data/shared.tsv", hub::serialize({shared})).empty());
     auto personal = entry();
     personal.title = "Ma version privée";
-    ASSERT_TRUE(hui::save::write_atomic(root + "/data/personal.tsv", hub::serialize({personal})).empty());
+    ASSERT_TRUE(
+        hui::save::write_atomic(root + "/data/personal.tsv", hub::serialize({personal})).empty());
     ASSERT_TRUE(service.load());
     wait(service);
     ASSERT_EQ(service.snapshot().entries.size(), 1u);

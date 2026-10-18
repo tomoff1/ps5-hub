@@ -197,6 +197,13 @@ std::string sha256_file(const std::string &path, const std::function<bool()> &ca
     return ok ? hex(digest, length) : std::string{};
 }
 
+bool initialize_network()
+{
+    static std::once_flag once;
+    static CURLcode initialized = CURLE_FAILED_INIT;
+    std::call_once(once, [] { initialized = curl_global_init(CURL_GLOBAL_DEFAULT); });
+    return initialized == CURLE_OK;
+}
 DownloadResult download_file(const DownloadRequest &r)
 {
     DownloadResult result;
@@ -206,10 +213,7 @@ DownloadResult download_file(const DownloadRequest &r)
         result.error = "Adresse, empreinte ou taille de téléchargement invalide";
         return result;
     }
-    static std::once_flag once;
-    static CURLcode initialized = CURLE_FAILED_INIT;
-    std::call_once(once, [] { initialized = curl_global_init(CURL_GLOBAL_DEFAULT); });
-    if (initialized != CURLE_OK)
+    if (!initialize_network())
     {
         result.error = "Initialisation réseau impossible";
         return result;

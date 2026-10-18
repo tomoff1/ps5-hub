@@ -6,6 +6,7 @@
 
 namespace hub
 {
+bool initialize_network();
 struct TransferProgress
 {
     std::uint64_t received = 0, total = 0, bytes_per_second = 0;

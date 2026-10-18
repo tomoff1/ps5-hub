@@ -5,12 +5,25 @@
 #include "core/save_file.hpp"
 #include "hub/download.hpp"
 #include "hub/package.hpp"
+#include "hub/installer.hpp"
+#include <algorithm>
 #include <cstdio>
+#include <cerrno>
 #include <sys/stat.h>
 #include <unistd.h>
 
 namespace hub
 {
+namespace
+{
+std::string discard_partial(const std::string &path)
+{
+    for (const auto *suffix : {".part", ".resume"})
+        if (std::remove((path + suffix).c_str()) != 0 && errno != ENOENT)
+            return " Copie partielle non supprimée : vérifiez les droits du stockage.";
+    return {};
+}
+} // namespace
 Service::Service(std::string root, std::string assets)
     : root_(std::move(root)), assets_(std::move(assets))
 {
@@ -25,6 +38,11 @@ Snapshot Service::snapshot()
 {
     std::lock_guard lock(mutex_);
     return state_;
+}
+bool Service::busy()
+{
+    std::lock_guard lock(mutex_);
+    return state_.busy;
 }
 bool Service::poll(Snapshot &previous)
 {
@@ -48,8 +66,210 @@ bool Service::add(Entry e)
 }
 bool Service::download(Entry e)
 {
-    return start(Job::download, std::move(e));
+    const auto blocked = download_block_reason(e);
+    std::lock_guard lock(mutex_);
+    if (!blocked.empty())
+    {
+        state_.message = blocked;
+        ++state_.revision;
+        return false;
+    }
+    for (const auto &t : state_.transfers)
+        if (t.entry.id == e.id)
+            return false;
+    if (state_.transfers.size() >= 200)
+        return false;
+    state_.transfers.push_back({std::move(e), "queued", "En attente"});
+    const auto error = persist_transfers();
+    if (!error.empty())
+    {
+        state_.transfers.pop_back();
+        state_.message = "File non enregistrée : " + error;
+    }
+    ++state_.revision;
+    return error.empty();
 }
+
+std::string Service::download_path(const Entry &e) const
+{
+    return root_ + "/downloads/" + e.id +
+           ((e.kind == "pkg" || e.format == "PKG") ? ".pkg" : ".zip");
+}
+bool Service::downloaded(const Entry &e) const
+{
+    struct stat st{};
+    return stat(download_path(e).c_str(), &st) == 0 && S_ISREG(st.st_mode);
+}
+std::string Service::persist_transfers()
+{
+    // Caller holds mutex_. A single atomic file preserves entries and states together.
+    if (!journal_valid_)
+        return "Historique invalide conservé : réparation manuelle nécessaire";
+    if (!hui::save::ensure_directory(root_))
+        return "Stockage inaccessible";
+    std::vector<Entry> entries;
+    std::string states;
+    for (const auto &t : state_.transfers)
+    {
+        entries.push_back(t.entry);
+        states += "#TRANSFER\t" + t.entry.id + "\t" + t.state + "\n";
+        auto message = t.message.substr(0, 800);
+        for (auto &c : message)
+            if (static_cast<unsigned char>(c) < 32)
+                c = ' ';
+        states += "#MESSAGE\t" + t.entry.id + "\t" + message + "\n";
+    }
+    return hui::save::write_atomic(root_ + "/transfers.tsv", states + serialize(entries));
+}
+void Service::restore_transfers()
+{
+    if (restored_)
+        return;
+    restored_ = true;
+    std::string text, error;
+    std::vector<Entry> entries;
+    const bool readable = hui::save::read_file(root_ + "/transfers.tsv", &text, 2 * 1024 * 1024);
+    if (!readable)
+    {
+        struct stat st{};
+        if (stat((root_ + "/transfers.tsv").c_str(), &st) != 0 && errno == ENOENT)
+            return;
+    }
+    if (!readable || !parse_catalog(text, entries, error) || entries.size() > 200)
+    {
+        std::lock_guard lock(mutex_);
+        journal_valid_ = false;
+        state_.message = "Historique de téléchargements invalide, fichier conservé";
+        return;
+    }
+    std::lock_guard lock(mutex_);
+    for (auto &e : entries)
+    {
+        auto status = std::string("paused");
+        for (const auto *candidate :
+             {"complete", "cancelled", "accepted", "unknown", "installing", "install_error"})
+            if (text.find("#TRANSFER\t" + e.id + "\t" + candidate + "\n") != text.npos)
+                status = candidate;
+        if (status == "installing")
+            status = "unknown";
+        if ((status == "complete" || status == "accepted" || status == "install_error") &&
+            !downloaded(e))
+            status = "failed";
+        std::string message =
+            status == "paused" ? "Reprise manuelle après redémarrage" : "Historique conservé";
+        const auto marker = "#MESSAGE\t" + e.id + "\t";
+        const auto pos = text.find(marker);
+        if (status != "paused" && pos != text.npos)
+        {
+            const auto end = text.find('\n', pos);
+            message = text.substr(pos + marker.size(),
+                                  std::min<std::size_t>(800, end - pos - marker.size()));
+        }
+        if (status == "unknown")
+            message = "État d’installation inconnu. Vérifiez les notifications etaHEN avant de "
+                      "réessayer.";
+        state_.transfers.push_back({std::move(e), status, std::move(message)});
+    }
+    ++state_.revision;
+}
+void Service::pump()
+{
+    Entry next;
+    {
+        std::lock_guard lock(mutex_);
+        if (state_.busy)
+            return;
+        for (auto &t : state_.transfers)
+            if (t.state == "queued")
+            {
+                next = t.entry;
+                break;
+            }
+    }
+    if (next.id.empty())
+        return;
+    start(Job::download, std::move(next));
+}
+bool Service::pause(const std::string &id)
+{
+    std::lock_guard lock(mutex_);
+    for (auto &t : state_.transfers)
+        if (t.entry.id == id && (t.state == "queued" || t.state == "downloading"))
+        {
+            if (t.state == "downloading")
+            {
+                interrupt_ = 1;
+                cancel_ = true;
+            }
+            else
+                t.state = "paused";
+            t.message = "Pause demandée";
+            persist_transfers();
+            ++state_.revision;
+            return true;
+        }
+    return false;
+}
+bool Service::resume(const std::string &id)
+{
+    std::lock_guard lock(mutex_);
+    for (auto &t : state_.transfers)
+        if (t.entry.id == id &&
+            (t.state == "paused" || t.state == "failed" || t.state == "cancelled"))
+        {
+            if (!download_block_reason(t.entry).empty())
+                return false;
+            t.state = "queued";
+            t.message = "En attente de reprise";
+            const auto error = persist_transfers();
+            if (!error.empty())
+            {
+                t.state = "failed";
+                t.message = "Reprise non enregistrée : " + error;
+            }
+            ++state_.revision;
+            return error.empty();
+        }
+    return false;
+}
+bool Service::remove(const std::string &id)
+{
+    std::lock_guard lock(mutex_);
+    for (auto &t : state_.transfers)
+        if (t.entry.id == id)
+        {
+            if (t.state == "installing" || t.state == "accepted" || t.state == "unknown" ||
+                t.state == "complete")
+                return false;
+            std::string deletion_error;
+            if (t.state == "downloading")
+            {
+                interrupt_ = 2;
+                cancel_ = true;
+            }
+            else
+            {
+                deletion_error = discard_partial(download_path(t.entry));
+                t.state = "cancelled";
+            }
+            t.message = "Annulation demandée ; fichier final conservé." + deletion_error;
+            persist_transfers();
+            ++state_.revision;
+            return true;
+        }
+    return false;
+}
+bool Service::probe_installation()
+{
+    return start(Job::probe);
+}
+bool Service::install(Entry e)
+{
+    if (!downloaded(e) || !snapshot().installer_available)
+        return false;
+    return start(Job::install, std::move(e));
+}
+
 bool Service::check_update()
 {
     return start(Job::update);
@@ -60,7 +280,7 @@ bool Service::sync_catalog()
 }
 bool Service::request_covers(std::vector<std::string> ids)
 {
-    if (ids.size() > 12 || snapshot().busy)
+    if (ids.size() > 12 || busy())
         return false;
     for (const auto &id : ids)
     {
@@ -88,18 +308,39 @@ bool Service::start(Job job, Entry entry)
     job_ = job;
     entry_ = std::move(entry);
     cancel_ = false;
+    interrupt_ = 0;
     received_ = 0;
     total_ = 0;
     speed_ = 0;
     {
         std::lock_guard lock(mutex_);
         state_.busy = true;
+        state_.active_id = (job == Job::download || job == Job::install) ? entry_.id : "";
+        for (auto &t : state_.transfers)
+            if (t.entry.id == state_.active_id)
+            {
+                t.state = job == Job::download ? "downloading" : "installing";
+                t.message = job == Job::download ? "Téléchargement en cours"
+                                                 : "Vérification puis envoi à etaHEN";
+            }
+        if (restored_)
+            persist_transfers();
         if (job != Job::covers)
-            state_.message = "Opération en cours…";
+            state_.message = job == Job::download ? "Téléchargement : " + entry_.title
+                             : job == Job::install
+                                 ? "Vérification et envoi à etaHEN : " + entry_.title
+                                 : "Opération en cours…";
         ++state_.revision;
     }
     if (pthread_create(&thread_, nullptr, run, this) != 0)
     {
+        {
+            std::lock_guard lock(mutex_);
+            for (auto &t : state_.transfers)
+                if (t.entry.id == state_.active_id)
+                    t.state = "failed";
+            persist_transfers();
+        }
         finish("Impossible de créer le travailleur");
         return false;
     }
@@ -126,6 +367,7 @@ void Service::finish(std::string message)
     std::lock_guard lock(mutex_);
     state_.message = std::move(message);
     state_.busy = false;
+    state_.active_id.clear();
     ++state_.revision;
 }
 std::string Service::transfer(const std::string &url, const std::string &path,
@@ -161,6 +403,38 @@ void Service::execute()
         !save::ensure_directory(root_ + "/covers"))
     {
         finish("Stockage personnel inaccessible");
+        return;
+    }
+    restore_transfers();
+    if (job_ == Job::probe || job_ == Job::install)
+    {
+        InstallerResult result;
+        if (job_ == Job::probe)
+            result = probe_installer();
+        else
+            result = install_package(
+                entry_, download_path(entry_), [this] { return cancelled(); },
+                [this](TransferProgress p)
+                {
+                    received_ = p.received;
+                    total_ = p.total;
+                    speed_ = p.bytes_per_second;
+                });
+        {
+            std::lock_guard lock(mutex_);
+            state_.installer_available = result.available;
+            state_.installer_message = result.message;
+            for (auto &t : state_.transfers)
+                if (job_ == Job::install && t.entry.id == entry_.id)
+                {
+                    t.state = result.accepted    ? "accepted"
+                              : result.uncertain ? "unknown"
+                                                 : "install_error";
+                    t.message = result.message;
+                }
+            persist_transfers();
+        }
+        finish(result.message);
         return;
     }
     if (job_ == Job::covers)
@@ -366,13 +640,23 @@ void Service::execute()
         auto error = download_block_reason(entry_);
         if (error.empty())
         {
+            struct stat partial{};
+            const auto part = download_path(entry_) + ".part";
+            const auto existing = stat(part.c_str(), &partial) == 0 && partial.st_size > 0
+                                      ? static_cast<std::uint64_t>(partial.st_size)
+                                      : 0;
+            error = storage_check(root_ + "/downloads",
+                                  entry_.size > existing ? entry_.size - existing : 0);
+        }
+        if (error.empty())
+        {
 #ifdef HUB_TEST
             error = "Réseau désactivé dans les tests unitaires";
 #else
             const bool pkg = entry_.kind == "pkg" || entry_.format == "PKG";
             DownloadRequest request;
             request.url = entry_.url;
-            request.path = root_ + "/downloads/" + entry_.id + (pkg ? ".pkg" : ".zip");
+            request.path = download_path(entry_);
             request.sha256 = entry_.sha256;
             request.expected_size = entry_.size;
             request.cancelled = [this] { return cancelled(); };
@@ -388,14 +672,36 @@ void Service::execute()
             error = download_file(request).error;
 #endif
         }
+        // Completion wins a late pause/cancel: never discard a verified final file.
+        std::string status = error.empty() ? "complete" : "failed";
+        if (!error.empty() && cancelled())
+        {
+            status = interrupt_.load() == 2 ? "cancelled" : "paused";
+            if (status == "cancelled")
+            {
+                error = "Téléchargement annulé." + discard_partial(download_path(entry_));
+            }
+        }
+        {
+            std::lock_guard lock(mutex_);
+            for (auto &t : state_.transfers)
+                if (t.entry.id == entry_.id)
+                {
+                    t.state = status;
+                    t.message = error.empty() ? "Fichier vérifié" : error;
+                }
+            const auto saved = persist_transfers();
+            if (!saved.empty())
+                error += " Historique non enregistré : " + saved;
+        }
         auto files = save::list_files(root_ + "/downloads");
         {
             std::lock_guard lock(mutex_);
             state_.files = std::move(files);
         }
-        finish(error.empty()
-                   ? "Fichier téléchargé et vérifié. Installation système manuelle requise."
-                   : error);
+        finish(error.empty() ? "Fichier téléchargé et vérifié. Consultez Téléchargements pour les "
+                               "actions disponibles."
+                             : error);
     }
     else
     {

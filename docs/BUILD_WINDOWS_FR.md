@@ -68,6 +68,8 @@ Le dossier contient aussi les modules et fichiers produits par le kit. Conservez
 
 ```bash
 make test-unit HOST_CXX=clang++-18 HOST_CC=clang-18
+HOST_CXX=clang++-18 bash tools/hub-download-tests.sh
+HOST_CXX=clang++-18 bash tools/hub-installer-tests.sh
 HOST_CXX=clang++-18 HOST_CC=clang-18 bash tools/host-snapshots.sh build/snapshots hub
 ```
 

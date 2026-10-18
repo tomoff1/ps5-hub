@@ -6,11 +6,13 @@
 #include <cstdio>
 #include <filesystem>
 #include <thread>
+#include <algorithm>
 
 static bool wait(hub::Service &service)
 {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(3);
-    while (service.snapshot().busy)
+    service.pump();
+    while (service.busy())
     {
         if (std::chrono::steady_clock::now() > deadline)
         {
@@ -31,9 +33,12 @@ int main()
     const auto state = service.snapshot();
     if (state.entries.empty())
         return 2;
-    auto entry = state.entries.front();
-    if (entry.kind != "homebrew" || !hub::valid_hash(entry.sha256))
+    const auto candidate =
+        std::find_if(state.entries.begin(), state.entries.end(), [](const hub::Entry &e)
+                     { return e.kind == "homebrew" && hub::download_block_reason(e).empty(); });
+    if (candidate == state.entries.end())
         return 3;
+    auto entry = *candidate;
     if (!service.download(entry) || !wait(service))
         return 4;
     const auto file = "build/network-smoke/downloads/" + entry.id + ".zip";

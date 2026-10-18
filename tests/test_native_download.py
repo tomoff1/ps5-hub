@@ -7,6 +7,7 @@ import ssl
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 
 PAYLOAD = bytes(range(256)) * 1200
@@ -50,6 +51,10 @@ class NativeDownload(unittest.TestCase):
                 try:
                     if self.path == '/interrupt' and not range_header:
                         self.wfile.write(body[:50000]); self.wfile.flush(); self.close_connection = True
+                    elif self.path == '/slow':
+                        for start in range(0, len(body), 8192):
+                            self.wfile.write(body[start:start+8192]); self.wfile.flush()
+                            time.sleep(0.01)
                     else:
                         self.wfile.write(body)
                 except (BrokenPipeError, ConnectionResetError, ssl.SSLError):
@@ -75,9 +80,12 @@ class NativeDownload(unittest.TestCase):
     def tearDown(self):
         self.folder.cleanup()
 
-    def run_download(self, route='/file', digest=DIGEST, size=len(PAYLOAD)):
-        return subprocess.run([os.environ['NATIVE_DOWNLOAD_RUNNER'], self.base+route, str(self.path),
-                               digest, str(self.ca), str(size)], capture_output=True, text=True, timeout=30)
+    def run_download(self, route='/file', digest=DIGEST, size=len(PAYLOAD), stop_after=None):
+        args = [os.environ['NATIVE_DOWNLOAD_RUNNER'], self.base+route, str(self.path),
+                digest, str(self.ca), str(size)]
+        if stop_after is not None:
+            args.append(str(stop_after))
+        return subprocess.run(args, capture_output=True, text=True, timeout=30)
 
     def seed(self, route):
         url = self.base+route
@@ -134,3 +142,17 @@ class NativeDownload(unittest.TestCase):
         result = self.run_download(size=len(PAYLOAD)+1)
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(self.path.exists())
+
+    def test_explicit_pause_keeps_partial_and_can_resume(self):
+        first = self.run_download('/slow', stop_after=40000)
+        self.assertNotEqual(first.returncode, 0, first.stdout+first.stderr)
+        self.assertIn('suspendu', first.stdout)
+        self.assertFalse(self.path.exists())
+        partial = Path(str(self.path)+'.part')
+        size = partial.stat().st_size
+        self.assertGreater(size, 0)
+        self.assertLess(size, len(PAYLOAD))
+        second = self.run_download('/slow')
+        self.assertEqual(second.returncode, 0, second.stdout+second.stderr)
+        self.assertEqual(self.path.read_bytes(), PAYLOAD)
+        self.assertEqual(self.requests[-1][1], f'bytes={size}-')

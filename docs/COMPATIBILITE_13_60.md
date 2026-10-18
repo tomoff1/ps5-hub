@@ -1,18 +1,18 @@
 # Compatibilité et protocole de test — firmware 13.60
 
-Retour utilisateur du 17 octobre 2026 : **l’alpha 0.1 apparaît sur l’accueil et démarre sur sa configuration déclarée PS5 13.60**, avec photos fournies dans le chat. Les photos personnelles ne sont pas redistribuées dans le dépôt. Ce retour ne valide pas toutes les fonctions, ni l’alpha 0.4.
+Retour utilisateur du 17 octobre 2026 : **l’alpha 0.1 apparaît sur l’accueil et démarre sur sa configuration déclarée PS5 13.60**, avec photos fournies dans le chat. Les photos personnelles ne sont pas redistribuées dans le dépôt. Ce retour ne valide pas toutes les fonctions, ni l’alpha 0.5.
 
 | Élément | État |
 |---|---|
 | PS5 jailbreakée, firmware 13.60 | Configuration déclarée par l’utilisateur |
-| HyperHEN | Version exacte inconnue |
+| etaHEN | Environnement déclaré dans la demande actuelle, version exacte inconnue |
 | ShadowMountPlus | Version exacte inconnue |
 | FTP 2121 | Sondage TCP du 18/10 : aucune réponse ; aucun transfert effectué |
 | Enregistrement du titre | Signalé sur l’alpha 0.1 ; icône personnalisée non confirmée |
-| Lancement et rendu OpenGL | Signalés sur l’alpha 0.1 ; alpha 0.4 à tester |
+| Lancement et rendu OpenGL | Signalés sur l’alpha 0.1 ; alpha 0.5 à tester |
 | DualSense, son, cadence et fermeture | À tester |
 | HTTPS et stockage dans le sandbox | À tester |
-| Installation de PKG depuis le hub | Non implémentée |
+| Installation de PKG depuis le hub | Connecteur DPIv2 compilé ; simulateur local, validation console à effectuer |
 | Bot PC / HyperDPI | Protocole testé avec simulateur ; console réelle à tester |
 
 Le projet amont du boilerplate rapporte des tests de son propre runtime sur 6.02 et 12.70. Ils ne valident ni cette application, ni le runtime OpenGL sur 13.60. Le README de [HyperHEN](https://github.com/Michele-M-Media/HYPERHEN) mentionne un chemin 13.60, mais une mention amont n’est pas un résultat de test de PS5 Hub.
@@ -50,3 +50,10 @@ Résultat : non testé / échec / partiel / validé pour CETTE configuration
 ```
 
 La validation ne doit être ajoutée au README qu’avec ce compte rendu et l’artefact correspondant.
+
+## Fonctions 0.5 à vérifier sur console
+
+- Ouvrir une page HTTPS publique avec Triangle, noter le code d’erreur si le système refuse. Tester le retour dans le titre et la navigation DualSense dans le navigateur système, puis les connexions normales du site. Aucune disponibilité WebView ni intégration des cookies n’est annoncée.
+- Avec un petit fichier autorisé, tester file, pause, reprise réseau, annulation, fermeture et reprise manuelle au redémarrage. Mesurer le quota `/download0` réel.
+- Activer DPIv2 dans etaHEN ; vérifier la détection 12800. Un service accessible sur 9090 n’est pas identifié par ce seul fait. Tester un petit PKG homebrew autorisé, vérifier SHA-256 et espace de staging ; relever la réponse DPIv2 et les notifications système. Une demande acceptée ne valide ni la fin d’installation ni le lancement.
+- Noter séparément : navigateur ouvert / fichier vérifié / demande acceptée / installation terminée / application lançable. Ni les signatures, ni le firmware requis, ni la jouabilité ne sont validés par l’inspection CNT/FIH.

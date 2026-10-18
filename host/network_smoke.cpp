@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <thread>
 #include <algorithm>
+#include <cstdlib>
 
 static bool wait(hub::Service &service)
 {
@@ -26,8 +27,13 @@ static bool wait(hub::Service &service)
 }
 int main()
 {
-    std::filesystem::create_directories("build/network-smoke");
-    hub::Service service("build/network-smoke", "assets");
+    std::filesystem::create_directories("build");
+    char pattern[] = "build/network-smoke-XXXXXX";
+    const auto *created = mkdtemp(pattern);
+    if (!created)
+        return 1;
+    const std::string root = created;
+    hub::Service service(root, "assets");
     if (!service.load() || !wait(service))
         return 1;
     const auto state = service.snapshot();
@@ -41,17 +47,19 @@ int main()
     auto entry = *candidate;
     if (!service.download(entry) || !wait(service))
         return 4;
-    const auto file = "build/network-smoke/downloads/" + entry.id + ".zip";
+    const auto file = root + "/downloads/" + entry.id + ".zip";
     if (!std::filesystem::is_regular_file(file))
         return 5;
     entry.id = "checksum-refuse";
     entry.sha256 = std::string(64, '0');
     if (!service.download(entry) || !wait(service))
         return 6;
-    if (service.snapshot().message.find("SHA-256 incorrecte") == std::string::npos)
+    const auto result = service.snapshot();
+    if (result.transfers.empty() || result.transfers.back().state != "failed" ||
+        result.message.find("SHA-256") == std::string::npos)
         return 7;
-    if (std::filesystem::exists("build/network-smoke/downloads/checksum-refuse.zip") ||
-        std::filesystem::exists("build/network-smoke/downloads/checksum-refuse.zip.part"))
+    if (std::filesystem::exists(root + "/downloads/checksum-refuse.zip") ||
+        std::filesystem::exists(root + "/downloads/checksum-refuse.zip.part"))
         return 8;
     std::puts("HTTPS et SHA-256 vérifiés sur PC ; aucune installation système effectuée.");
     return 0;
